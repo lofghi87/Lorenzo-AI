@@ -1,0 +1,8 @@
+{
+  "name": "lorenzo-ai",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Lorenzo AI - web chat deployable on Vercel",
+  "dependencies": { "openai": "^4.77.0" },
+  "engines": { "node": ">=18" }
+}
