@@ -1,19 +1,415 @@
+
+const SUPABASE_URL = 'https://bknkgctmpgiuxvahbbzs.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_rZEaUwMU4CCl7kUPdUlvuw_cuX2n9hB';
+
+const supabaseClient = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
+
 const $ = s => document.querySelector(s);
-const messagesEl = $('#messages'), welcome = $('#welcome'), promptEl = $('#prompt'), sendBtn = $('#sendBtn');
+const messagesEl = $('#messages');
+const welcome = $('#welcome');
+const promptEl = $('#prompt');
+const sendBtn = $('#sendBtn');
 const STORE_KEY = 'lorenzo-ai-chats-v1';
-let chats = loadChats(), activeId = null, busy = false, toastTimer;
-function loadChats(){try{return JSON.parse(localStorage.getItem(STORE_KEY)||'[]')}catch{return []}}
-function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(chats))}catch{showToast('Spazio locale esaurito: alcune chat potrebbero non essere salvate.')}}
-function id(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
-function current(){return chats.find(c=>c.id===activeId)}
-function showToast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000)}
-function renderHistory(){const h=$('#history');h.replaceChildren();chats.slice().reverse().forEach(c=>{const b=document.createElement('button');b.className='history-item'+(c.id===activeId?' active':'');b.innerHTML='<span>◷</span>';const title=document.createElement('span');title.textContent=c.title||'Nuova conversazione';b.append(title);b.title=c.title;b.onclick=()=>openChat(c.id);h.append(b)})}
-function newChat(){activeId=null;messagesEl.replaceChildren();welcome.hidden=false;renderHistory();promptEl.value='';resizeInput();promptEl.focus();$('#sidebar').classList.remove('open')}
-function openChat(chatId){const c=chats.find(x=>x.id===chatId);if(!c)return;activeId=chatId;messagesEl.replaceChildren();welcome.hidden=true;c.messages.forEach(m=>addMessage(m.role,m.content,false));renderHistory();$('#sidebar').classList.remove('open');scrollBottom()}
-function addMessage(role,content,scroll=true){const wrap=document.createElement('div');wrap.className='message '+role;const avatar=document.createElement('div');avatar.className='avatar';avatar.textContent=role==='user'?'L':'✳';const bubble=document.createElement('div');bubble.className='bubble';bubble.textContent=content;wrap.append(avatar,bubble);messagesEl.append(wrap);if(scroll)scrollBottom();return bubble}
-function scrollBottom(){const a=$('#chatArea');requestAnimationFrame(()=>a.scrollTop=a.scrollHeight)}
-function resizeInput(){promptEl.style.height='auto';promptEl.style.height=Math.min(promptEl.scrollHeight,180)+'px';sendBtn.disabled=busy||!promptEl.value.trim()}
-function renderAssistantText(el,text){el.textContent=text}
-function demoReply(text){const t=text.toLowerCase();if(/ciao|salve|buongiorno/.test(t))return 'Ciao! Sono Lorenzo AI, il tuo assistente personale. Posso aiutarti con studio, idee, scrittura e programmazione.\n\nAl momento sono in modalità demo: per risposte generate da un vero modello AI, configura il backend seguendo il README.';if(/codice|sito|html|javascript|program/.test(t))return 'Ottimo, possiamo lavorarci insieme!\n\nIn modalità demo non posso generare risposte dinamiche da un modello AI, ma questa applicazione è già predisposta per collegarne uno tramite API.\n\n**Prossimo passo:** configura una chiave API nel file `.env` sul tuo computer, poi riavvia il server. La chiave resterà sul server e non verrà esposta al browser.';if(/come funziona|aiutami|spiega/.test(t))return 'Certo. Posso aiutarti a scomporre il problema in passaggi chiari e pratici.\n\nQuesta è una risposta dimostrativa, non generata da un modello linguistico. Per attivare le risposte reali, segui le istruzioni nel README e configura una API key.';return 'Ho ricevuto il tuo messaggio. Questa installazione è attualmente in modalità demo, quindi la risposta non è stata generata da un modello AI.\n\nPer attivare l’assistente vero: installa Node.js, esegui `npm install`, copia `.env.example` in `.env`, aggiungi una chiave API valida e avvia con `npm start`. Consulta README.md per tutti i dettagli.'}
-async function sendMessage(text){text=text.trim();if(!text||busy)return;let c=current();if(!c){c={id:id(),title:text.slice(0,42)+(text.length>42?'…':''),messages:[]};chats.push(c);activeId=c.id}c.messages.push({role:'user',content:text});save();welcome.hidden=true;addMessage('user',text);renderHistory();promptEl.value='';resizeInput();busy=true;resizeInput();const thinking=addMessage('assistant','',false);thinking.innerHTML='<div class="typing"><span></span><span></span><span></span></div>';scrollBottom();let reply='';try{const status=await fetch('/api/status').then(r=>r.json()).catch(()=>({configured:false}));if(status.configured){const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:c.messages.slice(-40)})});const data=await res.json();if(!res.ok)throw new Error(data.error||'Errore del servizio AI');reply=data.reply||'Non è arrivata una risposta.';$('#connectionStatus').textContent='AI collegata';}else{reply=demoReply(text);$('#connectionStatus').textContent='Modalità demo';}}catch(e){reply='Non sono riuscito a contattare il modello AI.\n\n'+e.message+'\n\nPuoi continuare in modalità demo oppure controllare la configurazione del server.';}renderAssistantText(thinking,reply);c.messages.push({role:'assistant',content:reply});save();busy=false;resizeInput();renderHistory();scrollBottom()}
-$('#chatForm').addEventListener('submit',e=>{e.preventDefault();sendMessage(promptEl.value)});promptEl.addEventListener('input',resizeInput);promptEl.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(!sendBtn.disabled)sendMessage(promptEl.value)}});$('#newChat').onclick=newChat;$('#menuBtn').onclick=()=>$('#sidebar').classList.add('open');$('#closeSidebar').onclick=()=>$('#sidebar').classList.remove('open');document.querySelectorAll('.suggestion').forEach(b=>b.addEventListener('click',()=>sendMessage(b.dataset.prompt)));$('#attachBtn').onclick=()=>showToast('Gli allegati sono in programma per una prossima versione.');$('#settingsBtn').onclick=async()=>{let s={configured:false,model:'demo'};try{s=await fetch('/api/status').then(r=>r.json())}catch{}$('#settingsStatus').textContent=s.configured?'Una chiave API è configurata.':'Nessuna chiave API configurata: modalità demo.';$('#settingsTag').textContent=s.configured?'Connessa':'Demo';$('#settingsDialog').showModal()};$('#themeBtn').onclick=()=>{document.body.classList.toggle('light');try{localStorage.setItem('lorenzo-ai-theme',document.body.classList.contains('light')?'light':'dark')}catch{}};try{if(localStorage.getItem('lorenzo-ai-theme')==='light')document.body.classList.add('light')}catch{}renderHistory();if(chats.length)openChat(chats[chats.length-1].id);else newChat();
+
+let chats = [];
+let activeId = null;
+let busy = false;
+let toastTimer;
+let currentUser = null;
+
+function id() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function current() {
+  return chats.find(c => c.id === activeId);
+}
+
+function showToast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function renderHistory() {
+  const h = $('#history');
+  h.replaceChildren();
+
+  chats.slice().reverse().forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'history-item' + (c.id === activeId ? ' active' : '');
+    b.textContent = '◷ ' + (c.title || 'Nuova conversazione');
+    b.title = c.title || '';
+    b.onclick = () => openChat(c.id);
+    h.append(b);
+  });
+}
+
+function newChat() {
+  activeId = null;
+  messagesEl.replaceChildren();
+  welcome.hidden = false;
+  renderHistory();
+  promptEl.value = '';
+  resizeInput();
+  promptEl.focus();
+  $('#sidebar').classList.remove('open');
+}
+
+function openChat(chatId) {
+  const c = chats.find(x => x.id === chatId);
+  if (!c) return;
+
+  activeId = chatId;
+  messagesEl.replaceChildren();
+  welcome.hidden = false;
+  c.messages.forEach(m => addMessage(m.role, m.content, false));
+  welcome.hidden = c.messages.length > 0;
+  renderHistory();
+  $('#sidebar').classList.remove('open');
+  scrollBottom();
+}
+
+function addMessage(role, content, scroll = true) {
+  const wrap = document.createElement('div');
+  wrap.className = 'message ' + role;
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  avatar.textContent = role === 'user' ? 'L' : '✳';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = content;
+
+  wrap.append(avatar, bubble);
+  messagesEl.append(wrap);
+
+  if (scroll) scrollBottom();
+  return bubble;
+}
+
+function scrollBottom() {
+  const a = $('#chatArea');
+  requestAnimationFrame(() => a.scrollTop = a.scrollHeight);
+}
+
+function resizeInput() {
+  promptEl.style.height = 'auto';
+  promptEl.style.height = Math.min(promptEl.scrollHeight, 180) + 'px';
+  sendBtn.disabled = busy || !promptEl.value.trim() || !currentUser;
+}
+
+function renderAssistantText(el, text) {
+  el.textContent = text;
+}
+
+async function saveChat(chat) {
+  if (!currentUser || !chat) return;
+
+  const record = {
+    user_id: currentUser.id,
+    title: chat.title,
+    messages: chat.messages,
+    updated_at: new Date().toISOString()
+  };
+
+  let result;
+
+  if (chat.dbId) {
+    result = await supabaseClient
+      .from('chats')
+      .update(record)
+      .eq('id', chat.dbId)
+      .eq('user_id', currentUser.id)
+      .select('id')
+      .single();
+  } else {
+    result = await supabaseClient
+      .from('chats')
+      .insert(record)
+      .select('id')
+      .single();
+
+    if (!result.error && result.data) {
+      chat.dbId = result.data.id;
+    }
+  }
+
+  if (result.error) {
+    console.error(result.error);
+    showToast('Chat non salvata: ' + result.error.message);
+  }
+}
+
+async function loadCloudChats() {
+  const { data, error } = await supabaseClient
+    .from('chats')
+    .select('id,title,messages,created_at,updated_at')
+    .eq('user_id', currentUser.id)
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    showToast('Errore nel caricamento delle chat: ' + error.message);
+    return;
+  }
+
+  chats = (data || []).map(row => ({
+    id: row.id,
+    dbId: row.id,
+    title: row.title || 'Nuova conversazione',
+    messages: Array.isArray(row.messages) ? row.messages : []
+  }));
+
+  renderHistory();
+
+  if (chats.length) openChat(chats[0].id);
+  else newChat();
+}
+
+function showAuth() {
+  let panel = $('#authPanel');
+
+  if (!panel) {
+    panel = document.createElement('section');
+    panel.id = 'authPanel';
+    panel.style.cssText =
+      'max-width:420px;margin:24px auto;padding:24px;border:1px solid #5555;border-radius:18px';
+
+    panel.innerHTML = `
+      <h2>Accedi a Lorenzo AI</h2>
+      <p>Accedi per salvare e ritrovare le tue conversazioni.</p>
+      <form id="authForm">
+        <label for="authEmail">Email</label>
+        <input id="authEmail" type="email" required autocomplete="email"
+          style="display:block;width:100%;margin:8px 0 16px;padding:12px">
+        <label for="authPassword">Password</label>
+        <input id="authPassword" type="password" required minlength="6"
+          autocomplete="current-password"
+          style="display:block;width:100%;margin:8px 0 16px;padding:12px">
+        <button type="submit">Accedi</button>
+        <button type="button" id="signupBtn">Crea account</button>
+        <button type="button" id="logoutBtn" hidden>Esci</button>
+        <p id="authMessage" role="status"></p>
+      </form>`;
+
+    document.querySelector('.main').prepend(panel);
+
+    $('#authForm').addEventListener('submit', async e => {
+      e.preventDefault();
+
+      const email = $('#authEmail').value.trim();
+      const password = $('#authPassword').value;
+      $('#authMessage').textContent = 'Accesso in corso…';
+
+      const { error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      $('#authMessage').textContent = error
+        ? error.message
+        : 'Accesso effettuato.';
+    });
+
+    $('#signupBtn').onclick = async () => {
+      const email = $('#authEmail').value.trim();
+      const password = $('#authPassword').value;
+
+      if (!email || password.length < 6) {
+        $('#authMessage').textContent =
+          'Inserisci un’email valida e una password di almeno 6 caratteri.';
+        return;
+      }
+
+      $('#authMessage').textContent = 'Creazione account in corso…';
+
+      const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password
+      });
+
+      $('#authMessage').textContent = error
+        ? error.message
+        : data.session
+          ? 'Account creato!'
+          : 'Controlla la tua email per confermare la registrazione.';
+    };
+
+    $('#logoutBtn').onclick = async () => {
+      const { error } = await supabaseClient.auth.signOut();
+      if (error) showToast(error.message);
+    };
+  }
+
+  panel.hidden = false;
+  updateAuthPanel();
+}
+
+function updateAuthPanel() {
+  const panel = $('#authPanel');
+  if (!panel) return;
+
+  panel.hidden = false;
+  $('#authMessage').textContent = currentUser
+    ? 'Connesso: ' + currentUser.email
+    : 'Accedi o crea un account per continuare.';
+
+  $('#authEmail').hidden = !!currentUser;
+  $('#authPassword').hidden = !!currentUser;
+  $('#signupBtn').hidden = !!currentUser;
+  $('#authForm button[type="submit"]').hidden = !!currentUser;
+  $('#logoutBtn').hidden = !currentUser;
+  promptEl.disabled = !currentUser;
+  sendBtn.disabled = !currentUser || busy || !promptEl.value.trim();
+}
+
+async function handleAuthChange(session) {
+  currentUser = session?.user || null;
+  chats = [];
+  activeId = null;
+  messagesEl.replaceChildren();
+  renderHistory();
+
+  if (currentUser) {
+    await loadCloudChats();
+    $('#connectionStatus').textContent = 'Account connesso';
+  } else {
+    newChat();
+    $('#connectionStatus').textContent = 'Accedi per salvare le chat';
+  }
+
+  updateAuthPanel();
+  resizeInput();
+}
+
+async function sendMessage(text) {
+  text = text.trim();
+
+  if (!text || busy || !currentUser) return;
+
+  let c = current();
+
+  if (!c) {
+    c = {
+      id: id(),
+      title: text.slice(0, 42) + (text.length > 42 ? '…' : ''),
+      messages: []
+    };
+
+    chats.push(c);
+    activeId = c.id;
+  }
+
+  c.messages.push({ role: 'user', content: text });
+  welcome.hidden = true;
+  addMessage('user', text);
+  renderHistory();
+  promptEl.value = '';
+  resizeInput();
+  busy = true;
+  resizeInput();
+
+  const thinking = addMessage('assistant', '', false);
+  thinking.textContent = 'Sto pensando…';
+  scrollBottom();
+
+  let reply = '';
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: c.messages.slice(-40) })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Errore del servizio AI');
+
+    reply = data.reply || 'Non è arrivata una risposta.';
+    $('#connectionStatus').textContent = 'AI collegata';
+  } catch (e) {
+    reply = 'Non sono riuscito a contattare il modello AI.\n\n' + e.message;
+  }
+
+  renderAssistantText(thinking, reply);
+  c.messages.push({ role: 'assistant', content: reply });
+
+  await saveChat(c);
+
+  busy = false;
+  resizeInput();
+  renderHistory();
+  scrollBottom();
+}
+
+$('#chatForm').addEventListener('submit', e => {
+  e.preventDefault();
+  sendMessage(promptEl.value);
+});
+
+promptEl.addEventListener('input', resizeInput);
+
+promptEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (!sendBtn.disabled) sendMessage(promptEl.value);
+  }
+});
+
+$('#newChat').onclick = newChat;
+$('#menuBtn').onclick = () => $('#sidebar').classList.add('open');
+$('#closeSidebar').onclick = () => $('#sidebar').classList.remove('open');
+
+document.querySelectorAll('.suggestion').forEach(b =>
+  b.addEventListener('click', () => sendMessage(b.dataset.prompt))
+);
+
+$('#attachBtn').onclick = () =>
+  showToast('Gli allegati saranno disponibili in una versione futura.');
+
+$('#settingsBtn').onclick = async () => {
+  const { data } = await supabaseClient.auth.getSession();
+  const session = data.session;
+
+  $('#settingsStatus').textContent = session
+    ? 'Account connesso: ' + session.user.email
+    : 'Accedi per salvare le tue conversazioni.';
+
+  $('#settingsTag').textContent = session ? 'Connessa' : 'Accesso richiesto';
+  $('#settingsDialog').showModal();
+};
+
+$('#themeBtn').onclick = () => {
+  document.body.classList.toggle('light');
+
+  try {
+    localStorage.setItem(
+      'lorenzo-ai-theme',
+      document.body.classList.contains('light') ? 'light' : 'dark'
+    );
+  } catch {}
+};
+
+try {
+  if (localStorage.getItem('lorenzo-ai-theme') === 'light') {
+    document.body.classList.add('light');
+  }
+} catch {}
+
+showAuth();
+
+supabaseClient.auth.onAuthStateChange((_event, session) => {
+  setTimeout(() => handleAuthChange(session), 0);
+});
+
+supabaseClient.auth.getSession().then(({ data, error }) => {
+  if (error) showToast(error.message);
+  handleAuthChange(data.session);
+});
