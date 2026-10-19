@@ -1,16 +1,19 @@
-const OpenAI = require('openai');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
-    return res.status(405).json({ error: 'Metodo non consentito.' });
+    return res.status(405).json({
+      error: 'Metodo non consentito.'
+    });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
     return res.status(503).json({
-      error: 'Chiave API non configurata su Vercel.'
+      error: 'GEMINI_API_KEY non configurata su Vercel.'
     });
   }
 
@@ -22,36 +25,77 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  const safeMessages = messages.slice(-40).map(m => ({
-    role: ['user', 'assistant'].includes(m.role)
-      ? m.role : 'user',
-    content: String(m.content || '').slice(0, 12000)
-  }));
+  const contents = messages
+    .slice(-40)
+    .filter(m =>
+      ['user', 'assistant'].includes(m.role) &&
+      String(m.content || '').trim()
+    )
+    .map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{
+        text: String(m.content).slice(0, 12000)
+      }]
+    }));
+
+  if (!contents.length) {
+    return res.status(400).json({
+      error: 'Nessun messaggio valido.'
+    });
+  }
 
   try {
-    const client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
-
-    const result = await client.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'Sei Lorenzo AI, un assistente utile e chiaro. Rispondi in italiano quando l’utente scrive in italiano.'
+    const response = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
         },
-        ...safeMessages
-      ],
-      max_tokens: 1200
-    });
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{
+              text: 'Sei Lorenzo AI, un assistente utile e chiaro. Rispondi in italiano quando l’utente scrive in italiano.'
+            }]
+          },
+          contents,
+          generationConfig: {
+            maxOutputTokens: 1200
+          }
+        })
+      }
+    );
 
-    return res.status(200).json({
-      reply: result.choices[0].message.content
-    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Errore Gemini:', response.status, data.error);
+      const message = response.status === 429
+        ? 'Limite di utilizzo Gemini raggiunto. Riprova più tardi.'
+        : response.status === 403
+        ? 'Gemini ha rifiutato la richiesta. Controlla chiave e autorizzazioni.'
+        : 'Gemini non ha accettato la richiesta. Controlla i log di Vercel.';
+
+      return res.status(502).json({ error: message });
+    }
+
+    const reply = (data.candidates?.[0]?.content?.parts || [])
+      .map(part => part.text || '')
+      .join('')
+      .trim();
+
+    if (!reply) {
+      return res.status(502).json({
+        error: 'Gemini non ha restituito una risposta testuale.'
+      });
+    }
+
+    return res.status(200).json({ reply });
   } catch (error) {
-    console.error('Errore AI:', error.message);
+    console.error('Errore di connessione Gemini:', error.message);
     return res.status(502).json({
-      error: 'Errore AI. Controlla la chiave, il modello e la fatturazione API.'
+      error: 'Impossibile contattare Gemini. Riprova più tardi.'
     });
   }
 };
