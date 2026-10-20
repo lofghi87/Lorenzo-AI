@@ -1,33 +1,210 @@
+
 <!doctype html>
 <html lang="it">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#101014"><meta name="description" content="Il tuo spazio AI personale.">
-  <title>Lorenzo AI</title><link rel="stylesheet" href="/style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101014">
+  <meta name="description" content="Lorenzo AI: il tuo spazio AI personale.">
+  <title>Lorenzo AI</title>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <div class="app">
+
   <aside class="sidebar" id="sidebar">
-    <div class="brand"><div class="brand-mark">✳</div><span>Lorenzo <b>AI</b></span><button class="icon-btn close-sidebar" id="closeSidebar" aria-label="Chiudi menu">×</button></div>
-    <button class="new-chat" id="newChat"><span>＋</span> Nuova chat</button>
-    <div class="side-label">RECENTI</div><div id="history" class="history"></div>
-    <div class="side-bottom"><div class="status-dot"></div><div><strong>Il tuo spazio AI</strong><small id="connectionStatus">Modalità demo</small></div><button id="settingsBtn" class="icon-btn" title="Impostazioni">⚙</button></div>
+    <div class="brand">
+      <div class="brand-mark">✳</div>
+      <span>Lorenzo <b>AI</b></span>
+      <button class="icon-btn close-sidebar" id="closeSidebar" aria-label="Chiudi menu">×</button>
+    </div>
+
+    <button class="new-chat" id="newChat">
+      <span>＋</span> Nuova chat
+    </button>
+
+    <div class="side-label">RECENTI</div>
+    <div id="history" class="history"></div>
+
+    <div class="side-bottom">
+      <div class="status-dot"></div>
+      <div>
+        <strong>Il tuo spazio AI</strong>
+        <small id="connectionStatus">Connessione in corso…</small>
+      </div>
+      <button id="settingsBtn" class="icon-btn" title="Impostazioni" aria-label="Impostazioni">⚙</button>
+    </div>
   </aside>
+
   <main class="main">
-    <header class="topbar"><button class="icon-btn menu-btn" id="menuBtn" aria-label="Apri menu">☰</button><div <div class="model-pill">
-  <span class="online-dot"></span>
-  Lorenzo AI
-</div><div class="top-actions"><button class="icon-btn" id="themeBtn" title="Cambia tema">◐</button><button class="profile" title="Profilo">L</button></div></header>
-    <section class="chat-area" id="chatArea"><div class="welcome" id="welcome"><div class="welcome-icon">✳</div><p class="eyebrow">IL TUO ASSISTENTE PERSONALE</p><h1>Da dove<br><span>cominciamo?</span></h1><p class="welcome-sub">Idee, studio, codice e progetti. Mettiamo in moto qualcosa di grande.</p>
-      <div class="suggestions"><button class="suggestion" data-prompt="Aiutami a creare un sito web moderno, passo dopo passo."><span class="suggestion-icon">⌘</span><span><b>Costruiamo qualcosa</b><small>Scrivi codice e crea progetti</small></span><span class="arrow">↗</span></button><button class="suggestion" data-prompt="Spiegami un argomento difficile in modo semplice, con esempi."><span class="suggestion-icon">✎</span><span><b>Impariamo insieme</b><small>Spiegazioni chiare e pratiche</small></span><span class="arrow">↗</span></button><button class="suggestion" data-prompt="Aiutami a trovare un'idea concreta per un progetto che posso realizzare con budget zero."><span class="suggestion-icon">✧</span><span><b>Troviamo un'idea</b><small>Trasforma un pensiero in un piano</small></span><span class="arrow">↗</span></button><button class="suggestion" data-prompt="Organizza le mie attività in un piano semplice e realistico."><span class="suggestion-icon">▤</span><span><b>Organizziamo il lavoro</b><small>Un passo alla volta</small></span><span class="arrow">↗</span></button></div>
-    </div><div class="messages" id="messages" aria-live="polite"></div></section>
-    <div class="composer-wrap"><form id="chatForm" class="composer"><textarea id="prompt" rows="1" placeholder="Scrivi a Lorenzo AI…" aria-label="Messaggio" maxlength="12000"></textarea><div class="composer-bottom"><div class="composer-tools"><button type="button" class="tool-btn" id="attachBtn" title="Allega un file (demo)">＋ <span>Allega</span></button><span class="privacy-note">Le chat restano in questo browser</span></div><button class="send-btn" id="sendBtn" aria-label="Invia messaggio" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></div></form><p class="disclaimer">Lorenzo AI può commettere errori. Verifica le informazioni importanti.</p></div>
+
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menuBtn" aria-label="Apri menu">☰</button>
+
+      <div class="model-pill">
+        <span class="online-dot"></span>
+        Lorenzo AI
+      </div>
+
+      <div class="top-actions">
+        <button class="icon-btn" id="themeBtn" title="Cambia tema" aria-label="Cambia tema">◐</button>
+        <button class="profile" title="Profilo" aria-label="Profilo">L</button>
+      </div>
+    </header>
+
+    <section class="chat-area" id="chatArea">
+
+      <div class="welcome" id="welcome">
+        <div class="welcome-icon">✳</div>
+        <p class="eyebrow">IL TUO ASSISTENTE PERSONALE</p>
+
+        <h1>Da dove<br><span>cominciamo?</span></h1>
+
+        <p class="welcome-sub">
+          Idee, studio, codice e progetti. Mettiamo in moto qualcosa di grande.
+        </p>
+
+        <div class="suggestions">
+
+          <button class="suggestion" data-prompt="Aiutami a creare un sito web moderno, passo dopo passo.">
+            <span class="suggestion-icon">⌘</span>
+            <span>
+              <b>Costruiamo qualcosa</b>
+              <small>Scrivi codice e crea progetti</small>
+            </span>
+            <span class="arrow" aria-hidden="true">↗</span>
+          </button>
+
+          <button class="suggestion" data-prompt="Spiegami un argomento difficile in modo semplice, con esempi.">
+            <span class="suggestion-icon">✎</span>
+            <span>
+              <b>Impariamo insieme</b>
+              <small>Spiegazioni chiare e pratiche</small>
+            </span>
+            <span class="arrow" aria-hidden="true">↗</span>
+          </button>
+
+          <button class="suggestion" data-prompt="Aiutami a trovare un'idea concreta per un progetto che posso realizzare con budget zero.">
+            <span class="suggestion-icon">✧</span>
+            <span>
+              <b>Troviamo un'idea</b>
+              <small>Trasforma un pensiero in un piano</small>
+            </span>
+            <span class="arrow" aria-hidden="true">↗</span>
+          </button>
+
+          <button class="suggestion" data-prompt="Organizza le mie attività in un piano semplice e realistico.">
+            <span class="suggestion-icon">▤</span>
+            <span>
+              <b>Organizziamo il lavoro</b>
+              <small>Un passo alla volta</small>
+            </span>
+            <span class="arrow" aria-hidden="true">↗</span>
+          </button>
+
+        </div>
+      </div>
+
+      <div class="messages" id="messages" aria-live="polite"></div>
+    </section>
+
+    <div class="composer-wrap">
+
+      <form id="chatForm" class="composer">
+
+        <div
+          id="attachmentsPreview"
+          class="attachments-preview"
+          aria-live="polite"
+          aria-label="File selezionati"
+        ></div>
+
+        <textarea
+          id="prompt"
+          rows="1"
+          placeholder="Scrivi a Lorenzo AI…"
+          aria-label="Messaggio"
+          maxlength="12000"
+        ></textarea>
+
+        <input
+          id="fileInput"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+          multiple
+          hidden
+        >
+
+        <div class="composer-bottom">
+          <div class="composer-tools">
+
+            <button
+              type="button"
+              class="tool-btn"
+              id="attachBtn"
+              title="Allega immagini o PDF"
+              aria-label="Allega immagini o PDF"
+            >
+              ＋ <span>Allega</span>
+            </button>
+
+            <span class="privacy-note">Immagini e PDF supportati</span>
+          </div>
+
+          <button
+            class="send-btn"
+            id="sendBtn"
+            aria-label="Invia messaggio"
+            disabled
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 19V5M6 11l6-6 6 6"/>
+            </svg>
+          </button>
+        </div>
+
+      </form>
+
+      <p class="disclaimer">
+        Lorenzo AI può commettere errori. Verifica le informazioni importanti.
+      </p>
+    </div>
+
   </main>
 </div>
+
 <div class="toast" id="toast" role="status"></div>
-<dialog id="settingsDialog"><form method="dialog" class="settings"><button class="dialog-close" aria-label="Chiudi">×</button><div class="welcome-icon small">⚙</div><h2>Impostazioni</h2><p>Personalizza il tuo spazio AI.</p><div class="setting-row"><div><b>Connessione AI</b><small id="settingsStatus">Controllo in corso…</small></div><span class="setting-tag" id="settingsTag">Demo</span></div><div class="setting-info">Per attivare le risposte reali, avvia il server e configura una chiave API nel file <code>.env</code>. Non inserire mai la chiave in questa pagina.</div><button class="primary-btn" value="close">Fatto</button></form></dialog>
+
+<dialog id="settingsDialog">
+  <form method="dialog" class="settings">
+
+    <button class="dialog-close" aria-label="Chiudi">×</button>
+
+    <div class="welcome-icon small">⚙</div>
+    <h2>Impostazioni</h2>
+    <p>Personalizza il tuo spazio AI.</p>
+
+    <div class="setting-row">
+      <div>
+        <b>Connessione AI</b>
+        <small id="settingsStatus">Controllo in corso…</small>
+      </div>
+      <span class="setting-tag" id="settingsTag">...</span>
+    </div>
+
+    <div class="setting-info">
+      Lorenzo AI utilizza un servizio AI per generare le risposte.
+      Non inserire chiavi API o password nei messaggi.
+    </div>
+
+    <button class="primary-btn" value="close">Fatto</button>
+  </form>
+</dialog>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <script src="/app.js"></script>
-</body></html>
+
+</body>
+</html>
