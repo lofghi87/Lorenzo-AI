@@ -12,6 +12,7 @@ const messagesEl = $('#messages');
 const welcome = $('#welcome');
 const promptEl = $('#prompt');
 const sendBtn = $('#sendBtn');
+
 const STORE_KEY = 'lorenzo-ai-chats-v1';
 
 let chats = [];
@@ -19,6 +20,7 @@ let activeId = null;
 let busy = false;
 let toastTimer;
 let currentUser = null;
+let authReady = false;
 
 function id() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -34,6 +36,25 @@ function showToast(msg) {
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function loadLocalChats() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+    return Array.isArray(saved)
+      ? saved.filter(c => c && c.id && Array.isArray(c.messages))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalChats() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(chats));
+  } catch {
+    showToast('Impossibile salvare le chat su questo dispositivo.');
+  }
 }
 
 function renderHistory() {
@@ -67,9 +88,10 @@ function openChat(chatId) {
 
   activeId = chatId;
   messagesEl.replaceChildren();
-  welcome.hidden = false;
+
   c.messages.forEach(m => addMessage(m.role, m.content, false));
   welcome.hidden = c.messages.length > 0;
+
   renderHistory();
   $('#sidebar').classList.remove('open');
   scrollBottom();
@@ -96,21 +118,65 @@ function addMessage(role, content, scroll = true) {
 
 function scrollBottom() {
   const a = $('#chatArea');
-  requestAnimationFrame(() => a.scrollTop = a.scrollHeight);
+  requestAnimationFrame(() => {
+    a.scrollTop = a.scrollHeight;
+  });
 }
 
 function resizeInput() {
   promptEl.style.height = 'auto';
   promptEl.style.height = Math.min(promptEl.scrollHeight, 180) + 'px';
-  sendBtn.disabled = busy || !promptEl.value.trim() || !currentUser;
+
+  // La chat è utilizzabile anche senza effettuare l'accesso.
+  sendBtn.disabled = busy || !promptEl.value.trim();
+  promptEl.disabled = busy;
 }
 
 function renderAssistantText(el, text) {
   el.textContent = text;
 }
 
+function setupAccountButton() {
+  const profile = $('.profile');
+  if (!profile) return;
+
+  // Riutilizza il pulsante già presente nell'HTML.
+  profile.id = 'accountBtn';
+  profile.style.cssText =
+    'width:auto;min-width:76px;padding:0 16px;border-radius:24px;' +
+    'white-space:nowrap;font-size:14px;cursor:pointer';
+
+  updateAccountButton();
+}
+
+function updateAccountButton() {
+  const btn = $('#accountBtn');
+  if (!btn) return;
+
+  if (currentUser) {
+    btn.textContent = 'Esci';
+    btn.title = currentUser.email || 'Esci dal tuo account';
+    btn.onclick = async () => {
+      const { error } = await supabaseClient.auth.signOut();
+      if (error) showToast(error.message);
+    };
+  } else {
+    btn.textContent = 'Accedi';
+    btn.title = 'Accedi o crea un account';
+    btn.onclick = () => {
+      window.location.href = '/login.html';
+    };
+  }
+}
+
 async function saveChat(chat) {
-  if (!currentUser || !chat) return;
+  if (!chat) return;
+
+  // Senza account, le conversazioni vengono salvate nel browser.
+  if (!currentUser) {
+    saveLocalChats();
+    return;
+  }
 
   const record = {
     user_id: currentUser.id,
@@ -138,12 +204,14 @@ async function saveChat(chat) {
 
     if (!result.error && result.data) {
       chat.dbId = result.data.id;
+      chat.id = result.data.id;
+      activeId = result.data.id;
     }
   }
 
   if (result.error) {
     console.error(result.error);
-    showToast('Chat non salvata: ' + result.error.message);
+    showToast('Errore nel salvataggio della chat.');
   }
 }
 
@@ -155,7 +223,8 @@ async function loadCloudChats() {
     .order('updated_at', { ascending: false });
 
   if (error) {
-    showToast('Errore nel caricamento delle chat: ' + error.message);
+    console.error(error);
+    showToast('Errore nel caricamento delle chat.');
     return;
   }
 
@@ -168,130 +237,55 @@ async function loadCloudChats() {
 
   renderHistory();
 
-  if (chats.length) openChat(chats[0].id);
-  else newChat();
-}
-
-function showAuth() {
-  let panel = $('#authPanel');
-
-  if (!panel) {
-    panel = document.createElement('section');
-    panel.id = 'authPanel';
-    panel.style.cssText =
-      'max-width:420px;margin:24px auto;padding:24px;border:1px solid #5555;border-radius:18px';
-
-    panel.innerHTML = `
-      <h2>Accedi a Lorenzo AI</h2>
-      <p>Accedi per salvare e ritrovare le tue conversazioni.</p>
-      <form id="authForm">
-        <label for="authEmail">Email</label>
-        <input id="authEmail" type="email" required autocomplete="email"
-          style="display:block;width:100%;margin:8px 0 16px;padding:12px">
-        <label for="authPassword">Password</label>
-        <input id="authPassword" type="password" required minlength="6"
-          autocomplete="current-password"
-          style="display:block;width:100%;margin:8px 0 16px;padding:12px">
-        <button type="submit">Accedi</button>
-        <button type="button" id="signupBtn">Crea account</button>
-        <button type="button" id="logoutBtn" hidden>Esci</button>
-        <p id="authMessage" role="status"></p>
-      </form>`;
-
-    document.querySelector('.main').prepend(panel);
-
-    $('#authForm').addEventListener('submit', async e => {
-      e.preventDefault();
-
-      const email = $('#authEmail').value.trim();
-      const password = $('#authPassword').value;
-      $('#authMessage').textContent = 'Accesso in corso…';
-
-      const { error } = await supabaseClient.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      $('#authMessage').textContent = error
-        ? error.message
-        : 'Accesso effettuato.';
-    });
-
-    $('#signupBtn').onclick = async () => {
-      const email = $('#authEmail').value.trim();
-      const password = $('#authPassword').value;
-
-      if (!email || password.length < 6) {
-        $('#authMessage').textContent =
-          'Inserisci un’email valida e una password di almeno 6 caratteri.';
-        return;
-      }
-
-      $('#authMessage').textContent = 'Creazione account in corso…';
-
-      const { data, error } = await supabaseClient.auth.signUp({
-        email,
-        password
-      });
-
-      $('#authMessage').textContent = error
-        ? error.message
-        : data.session
-          ? 'Account creato!'
-          : 'Controlla la tua email per confermare la registrazione.';
-    };
-
-    $('#logoutBtn').onclick = async () => {
-      const { error } = await supabaseClient.auth.signOut();
-      if (error) showToast(error.message);
-    };
+  if (chats.length) {
+    openChat(chats[0].id);
+  } else {
+    newChat();
   }
-
-  panel.hidden = false;
-  updateAuthPanel();
-}
-
-function updateAuthPanel() {
-  const panel = $('#authPanel');
-  if (!panel) return;
-
-  panel.hidden = false;
-  $('#authMessage').textContent = currentUser
-    ? 'Connesso: ' + currentUser.email
-    : 'Accedi o crea un account per continuare.';
-
-  $('#authEmail').hidden = !!currentUser;
-  $('#authPassword').hidden = !!currentUser;
-  $('#signupBtn').hidden = !!currentUser;
-  $('#authForm button[type="submit"]').hidden = !!currentUser;
-  $('#logoutBtn').hidden = !currentUser;
-  promptEl.disabled = !currentUser;
-  sendBtn.disabled = !currentUser || busy || !promptEl.value.trim();
 }
 
 async function handleAuthChange(session) {
-  currentUser = session?.user || null;
+  const nextUser = session?.user || null;
+  const previousId = currentUser?.id || null;
+  const nextId = nextUser?.id || null;
+
+  currentUser = nextUser;
+  authReady = true;
+  updateAccountButton();
+
+  // Evita di ricaricare le chat se la sessione è la stessa.
+  if (previousId === nextId) {
+    resizeInput();
+    return;
+  }
+
   chats = [];
   activeId = null;
   messagesEl.replaceChildren();
-  renderHistory();
+  welcome.hidden = false;
 
   if (currentUser) {
-    await loadCloudChats();
     $('#connectionStatus').textContent = 'Account connesso';
+    await loadCloudChats();
   } else {
-    newChat();
-    $('#connectionStatus').textContent = 'Accedi per salvare le chat';
+    chats = loadLocalChats();
+    $('#connectionStatus').textContent = 'Chat salvate su questo dispositivo';
+    renderHistory();
+
+    if (chats.length) {
+      openChat(chats[0].id);
+    } else {
+      newChat();
+    }
   }
 
-  updateAuthPanel();
   resizeInput();
 }
 
 async function sendMessage(text) {
   text = text.trim();
 
-  if (!text || busy || !currentUser) return;
+  if (!text || busy || !authReady) return;
 
   let c = current();
 
@@ -307,11 +301,12 @@ async function sendMessage(text) {
   }
 
   c.messages.push({ role: 'user', content: text });
+
   welcome.hidden = true;
   addMessage('user', text);
   renderHistory();
+
   promptEl.value = '';
-  resizeInput();
   busy = true;
   resizeInput();
 
@@ -330,7 +325,9 @@ async function sendMessage(text) {
 
     const data = await res.json();
 
-    if (!res.ok) throw new Error(data.error || 'Errore del servizio AI');
+    if (!res.ok) {
+      throw new Error(data.error || 'Errore del servizio AI');
+    }
 
     reply = data.reply || 'Non è arrivata una risposta.';
     $('#connectionStatus').textContent = 'AI collegata';
@@ -367,12 +364,13 @@ $('#newChat').onclick = newChat;
 $('#menuBtn').onclick = () => $('#sidebar').classList.add('open');
 $('#closeSidebar').onclick = () => $('#sidebar').classList.remove('open');
 
-document.querySelectorAll('.suggestion').forEach(b =>
-  b.addEventListener('click', () => sendMessage(b.dataset.prompt))
-);
+document.querySelectorAll('.suggestion').forEach(b => {
+  b.addEventListener('click', () => sendMessage(b.dataset.prompt));
+});
 
-$('#attachBtn').onclick = () =>
+$('#attachBtn').onclick = () => {
   showToast('Gli allegati saranno disponibili in una versione futura.');
+};
 
 $('#settingsBtn').onclick = async () => {
   const { data } = await supabaseClient.auth.getSession();
@@ -380,9 +378,9 @@ $('#settingsBtn').onclick = async () => {
 
   $('#settingsStatus').textContent = session
     ? 'Account connesso: ' + session.user.email
-    : 'Accedi per salvare le tue conversazioni.';
+    : 'Le chat senza account sono salvate solo su questo dispositivo.';
 
-  $('#settingsTag').textContent = session ? 'Connessa' : 'Accesso richiesto';
+  $('#settingsTag').textContent = session ? 'Connessa' : 'Locale';
   $('#settingsDialog').showModal();
 };
 
@@ -403,13 +401,17 @@ try {
   }
 } catch {}
 
-showAuth();
+// Inizializza la pagina senza inserire moduli di accesso nella chat.
+setupAccountButton();
 
 supabaseClient.auth.onAuthStateChange((_event, session) => {
   setTimeout(() => handleAuthChange(session), 0);
 });
 
 supabaseClient.auth.getSession().then(({ data, error }) => {
-  if (error) showToast(error.message);
-  handleAuthChange(data.session);
+  if (error) showToast('Errore di autenticazione.');
+
+  if (!authReady) {
+    handleAuthChange(data?.session || null);
+  }
 });
