@@ -288,3 +288,109 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Formattazione delle risposte AI */
+.message.assistant .bubble {
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.message.assistant .bubble h1,
+.message.assistant .bubble h2,
+.message.assistant .bubble h3,
+.message.assistant .bubble h4 {
+  font-family: Manrope, sans-serif;
+  line-height: 1.3;
+  letter-spacing: -0.4px;
+  margin: 22px 0 10px;
+}
+
+.message.assistant .bubble h1 { font-size: 1.5em; }
+.message.assistant .bubble h2 { font-size: 1.3em; }
+.message.assistant .bubble h3 { font-size: 1.12em; }
+
+.message.assistant .bubble p {
+  margin: 0 0 14px;
+}
+
+.message.assistant .bubble strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.message.assistant .bubble em {
+  color: var(--accent);
+}
+
+.message.assistant .bubble ul,
+.message.assistant .bubble ol {
+  padding-left: 25px;
+  margin: 8px 0 16px;
+}
+
+.message.assistant .bubble li {
+  padding-left: 4px;
+  margin: 5px 0;
+}
+
+.message.assistant .bubble blockquote {
+  margin: 14px 0;
+  padding: 4px 0 4px 14px;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+
+.message.assistant .bubble pre {
+  overflow-x: auto;
+  max-width: 100%;
+  white-space: pre;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.message.assistant .bubble pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.message.assistant .bubble a {
+  color: var(--accent2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.message.assistant .bubble hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 20px 0;
+}
+
+.message.assistant .bubble table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+
+.message.assistant .bubble th,
+.message.assistant .bubble td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.message.assistant .bubble th {
+  background: var(--panel);
+}
+
+.message.assistant .bubble img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
