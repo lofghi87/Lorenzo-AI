@@ -32,6 +32,7 @@ function current() {
 
 function showToast(msg) {
   const t = $('#toast');
+  if (!t) return;
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
@@ -97,6 +98,35 @@ function openChat(chatId) {
   scrollBottom();
 }
 
+function renderMarkdown(el, text) {
+  // Se le librerie non sono caricate, usa testo semplice.
+  if (!window.marked || !window.DOMPurify) {
+    el.textContent = text;
+    return;
+  }
+
+  const html = window.marked.parse(text, {
+    gfm: true,
+    breaks: true
+  });
+
+  el.innerHTML = window.DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true }
+  });
+
+  // I link esterni si aprono in una nuova scheda.
+  el.querySelectorAll('a[href]').forEach(link => {
+    const url = new URL(link.href, window.location.origin);
+
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    } else {
+      link.removeAttribute('href');
+    }
+  });
+}
+
 function addMessage(role, content, scroll = true) {
   const wrap = document.createElement('div');
   wrap.className = 'message ' + role;
@@ -107,7 +137,13 @@ function addMessage(role, content, scroll = true) {
 
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.textContent = content;
+
+  if (role === 'assistant') {
+    renderMarkdown(bubble, content);
+  } else {
+    // I messaggi dell'utente restano testo semplice e sicuro.
+    bubble.textContent = content;
+  }
 
   wrap.append(avatar, bubble);
   messagesEl.append(wrap);
@@ -127,20 +163,18 @@ function resizeInput() {
   promptEl.style.height = 'auto';
   promptEl.style.height = Math.min(promptEl.scrollHeight, 180) + 'px';
 
-  // La chat è utilizzabile anche senza effettuare l'accesso.
-  sendBtn.disabled = busy || !promptEl.value.trim();
-  promptEl.disabled = busy;
+  sendBtn.disabled = busy || !promptEl.value.trim() || !authReady;
+  promptEl.disabled = busy || !authReady;
 }
 
 function renderAssistantText(el, text) {
-  el.textContent = text;
+  renderMarkdown(el, text);
 }
 
 function setupAccountButton() {
   const profile = $('.profile');
   if (!profile) return;
 
-  // Riutilizza il pulsante già presente nell'HTML.
   profile.id = 'accountBtn';
   profile.style.cssText =
     'width:auto;min-width:76px;padding:0 16px;border-radius:24px;' +
@@ -172,7 +206,6 @@ function updateAccountButton() {
 async function saveChat(chat) {
   if (!chat) return;
 
-  // Senza account, le conversazioni vengono salvate nel browser.
   if (!currentUser) {
     saveLocalChats();
     return;
@@ -253,7 +286,6 @@ async function handleAuthChange(session) {
   authReady = true;
   updateAccountButton();
 
-  // Evita di ricaricare le chat se la sessione è la stessa.
   if (previousId === nextId) {
     resizeInput();
     return;
@@ -401,7 +433,6 @@ try {
   }
 } catch {}
 
-// Inizializza la pagina senza inserire moduli di accesso nella chat.
 setupAccountButton();
 
 supabaseClient.auth.onAuthStateChange((_event, session) => {
