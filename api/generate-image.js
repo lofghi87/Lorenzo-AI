@@ -13,21 +13,15 @@ module.exports = async function handler(req, res) {
 
   if (!apiKey) {
     return res.status(503).json({
-      error: 'GEMINI_API_KEY non configurata su Vercel.'
+      error: 'Manca GEMINI_API_KEY nelle variabili di Vercel.'
     });
   }
 
   const prompt = String(req.body?.prompt || '').trim();
 
-  if (!prompt) {
+  if (!prompt || prompt.length > 2000) {
     return res.status(400).json({
-      error: 'Scrivi una descrizione per l’immagine.'
-    });
-  }
-
-  if (prompt.length > 2000) {
-    return res.status(400).json({
-      error: 'La descrizione non può superare 2000 caratteri.'
+      error: 'La descrizione deve contenere da 1 a 2000 caratteri.'
     });
   }
 
@@ -56,26 +50,29 @@ module.exports = async function handler(req, res) {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error(
-        'Errore generazione immagine:',
-        response.status,
-        data.error
-      );
+      console.error('Errore API immagini:', response.status, data);
 
-      const message = response.status === 429
-        ? 'Limite di utilizzo raggiunto. Riprova più tardi.'
-        : response.status === 403
-        ? 'Accesso al modello non autorizzato. Controlla chiave e autorizzazioni.'
-        : 'Non è stato possibile generare l’immagine. Controlla i log di Vercel.';
+      const apiMessage =
+        data?.error?.message ||
+        data?.message ||
+        'Il servizio Google non ha fornito dettagli.';
 
-      return res.status(502).json({ error: message });
+      return res.status(502).json({
+        error: 'Google API (' + response.status + '): ' +
+          String(apiMessage).slice(0, 500)
+      });
     }
 
     const image = data.output_image;
 
     if (!image?.data) {
+      console.error(
+        'Risposta senza output_image:',
+        JSON.stringify(data).slice(0, 1500)
+      );
+
       return res.status(502).json({
-        error: 'Il modello non ha restituito un’immagine.'
+        error: 'La richiesta è stata accettata, ma non è arrivata un’immagine.'
       });
     }
 
@@ -83,18 +80,18 @@ module.exports = async function handler(req, res) {
 
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
       return res.status(502).json({
-        error: 'Il modello ha restituito un formato immagine non supportato.'
+        error: 'Formato immagine restituito non supportato.'
       });
     }
 
     return res.status(200).json({
-      image: `data:${mimeType};base64,${image.data}`
+      image: 'data:' + mimeType + ';base64,' + image.data
     });
   } catch (error) {
     console.error('Errore di connessione:', error.message);
 
     return res.status(502).json({
-      error: 'Impossibile contattare il servizio immagini. Riprova più tardi.'
+      error: 'Errore di connessione al servizio immagini.'
     });
   }
 };
