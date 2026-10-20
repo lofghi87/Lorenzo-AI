@@ -15,6 +15,7 @@ const sendBtn = $('#sendBtn');
 const fileInput = $('#fileInput');
 const attachBtn = $('#attachBtn');
 const attachmentsPreview = $('#attachmentsPreview');
+const imageModeBtn = $('#imageModeBtn');
 
 const STORE_KEY = 'lorenzo-ai-chats-v1';
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
@@ -37,6 +38,7 @@ let toastTimer;
 let currentUser = null;
 let authReady = false;
 let selectedAttachments = [];
+let imageMode = false;
 
 function id() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -93,11 +95,24 @@ function renderHistory() {
   });
 }
 
+function resetImageMode() {
+  imageMode = false;
+
+  if (imageModeBtn) {
+    imageModeBtn.setAttribute('aria-pressed', 'false');
+    imageModeBtn.classList.remove('active');
+    imageModeBtn.style.borderColor = '';
+  }
+
+  promptEl.placeholder = 'Scrivi a Lorenzo AI…';
+}
+
 function clearSelectedAttachments() {
   selectedAttachments = [];
   renderAttachmentsPreview();
 
   if (fileInput) fileInput.value = '';
+
   resizeInput();
 }
 
@@ -107,6 +122,7 @@ function newChat() {
   welcome.hidden = false;
   promptEl.value = '';
 
+  resetImageMode();
   clearSelectedAttachments();
   renderHistory();
   resizeInput();
@@ -128,6 +144,7 @@ function openChat(chatId) {
 
   welcome.hidden = c.messages.length > 0;
 
+  resetImageMode();
   clearSelectedAttachments();
   renderHistory();
 
@@ -227,6 +244,10 @@ function resizeInput() {
 
   if (attachBtn) {
     attachBtn.disabled = busy || !authReady;
+  }
+
+  if (imageModeBtn) {
+    imageModeBtn.disabled = busy || !authReady;
   }
 }
 
@@ -385,7 +406,7 @@ async function handleAuthChange(session) {
   resizeInput();
 }
 
-/* Converte un file in base64 per inviarlo a Gemini. */
+/* Lettura degli allegati. */
 function readFileAsBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -418,7 +439,6 @@ function formatSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-/* Anteprime e rimozione degli allegati selezionati. */
 function renderAttachmentsPreview() {
   if (!attachmentsPreview) return;
 
@@ -440,7 +460,8 @@ function renderAttachmentsPreview() {
     info.style.cssText = 'min-width:0;overflow:hidden';
 
     const name = document.createElement('div');
-    name.textContent = (item.type.startsWith('image/') ? '▧ ' : '▤ ') + item.name;
+    name.textContent =
+      (item.type.startsWith('image/') ? '▧ ' : '▤ ') + item.name;
     name.style.cssText =
       'max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
 
@@ -474,7 +495,6 @@ async function handleFiles(fileList) {
   if (busy || !authReady) return;
 
   const files = Array.from(fileList || []);
-
   if (!files.length) return;
 
   let totalSize = selectedAttachments.reduce(
@@ -531,6 +551,135 @@ async function handleFiles(fileList) {
   resizeInput();
 }
 
+/* Visualizza l'immagine generata nella conversazione. */
+function addGeneratedImage(imageData, promptText) {
+  const wrap = document.createElement('div');
+  wrap.className = 'message assistant';
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  avatar.textContent = '✳';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  const caption = document.createElement('p');
+  caption.textContent = 'Immagine generata';
+  bubble.append(caption);
+
+  const img = document.createElement('img');
+  img.src = imageData;
+  img.alt = promptText || 'Immagine generata da Lorenzo AI';
+  img.loading = 'lazy';
+  img.style.cssText =
+    'display:block;width:100%;max-width:512px;height:auto;' +
+    'border-radius:14px;margin-top:8px';
+
+  bubble.append(img);
+
+  const download = document.createElement('a');
+  download.href = imageData;
+  download.download = 'lorenzo-ai-immagine.png';
+  download.textContent = 'Scarica immagine';
+  download.style.cssText = 'display:inline-block;margin-top:10px';
+
+  bubble.append(download);
+  wrap.append(avatar, bubble);
+  messagesEl.append(wrap);
+
+  scrollBottom();
+}
+
+/* Richiesta al backend di generazione immagini. */
+async function generateImage(promptText) {
+  if (busy || !authReady) return;
+
+  let c = current();
+
+  if (!c) {
+    c = {
+      id: id(),
+      title: ('Immagine: ' + promptText).slice(0, 42),
+      messages: []
+    };
+
+    chats.push(c);
+    activeId = c.id;
+  }
+
+  const userContent = 'Crea un’immagine: ' + promptText;
+
+  c.messages.push({
+    role: 'user',
+    content: userContent
+  });
+
+  welcome.hidden = true;
+  addMessage('user', userContent);
+  renderHistory();
+
+  promptEl.value = '';
+  resetImageMode();
+
+  busy = true;
+  resizeInput();
+
+  const status = addMessage('assistant', 'Sto creando la tua immagine…');
+  let reply = '';
+
+  try {
+    const response = await fetch('/api/generate-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: promptText })
+    });
+
+    let data;
+
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error('Il server ha restituito una risposta non valida.');
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Generazione non riuscita.');
+    }
+
+    if (
+      typeof data.image !== 'string' ||
+      !/^data:image\/(png|jpeg|webp);base64,/.test(data.image)
+    ) {
+      throw new Error('Il server non ha restituito un’immagine valida.');
+    }
+
+    status.remove();
+    addGeneratedImage(data.image, promptText);
+
+    reply = 'Immagine generata per: ' + promptText;
+    $('#connectionStatus').textContent = 'Generatore immagini collegato';
+  } catch (error) {
+    status.textContent =
+      'Non sono riuscito a generare l’immagine: ' +
+      (error.message || 'Errore sconosciuto.');
+
+    reply = status.textContent;
+  }
+
+  c.messages.push({
+    role: 'assistant',
+    content: reply
+  });
+
+  await saveChat(c);
+
+  busy = false;
+  resizeInput();
+  renderHistory();
+  scrollBottom();
+}
+
+/* Invio di un messaggio normale o con allegati. */
 async function sendMessage(text) {
   text = String(text || '').trim();
 
@@ -542,8 +691,27 @@ async function sendMessage(text) {
     return;
   }
 
-  const attachments = selectedAttachments.slice();
+  if (imageMode) {
+    if (!text) {
+      showToast('Scrivi una descrizione per l’immagine.');
+      return;
+    }
 
+    if (selectedAttachments.length) {
+      showToast('Rimuovi gli allegati prima di generare un’immagine.');
+      return;
+    }
+
+    if (text.length > 2000) {
+      showToast('La descrizione non può superare 2000 caratteri.');
+      return;
+    }
+
+    await generateImage(text);
+    return;
+  }
+
+  const attachments = selectedAttachments.slice();
   let c = current();
 
   if (!c) {
@@ -592,10 +760,6 @@ async function sendMessage(text) {
   let reply = '';
 
   try {
-    /*
-     * I file vengono aggiunti solo al messaggio appena inviato.
-     * Le chat salvate contengono i nomi dei file, non il loro contenuto.
-     */
     const apiMessages = c.messages.slice(-40).map(message => {
       const outgoing = {
         role: message.role,
@@ -653,7 +817,7 @@ async function sendMessage(text) {
   scrollBottom();
 }
 
-/* Invio del messaggio. */
+/* Eventi del compositore. */
 $('#chatForm').addEventListener('submit', event => {
   event.preventDefault();
   sendMessage(promptEl.value);
@@ -685,6 +849,41 @@ fileInput.addEventListener('change', async () => {
   await handleFiles(fileInput.files);
   fileInput.value = '';
 });
+
+/* Attiva e disattiva la modalità di generazione immagini. */
+if (imageModeBtn) {
+  imageModeBtn.setAttribute('aria-pressed', 'false');
+
+  imageModeBtn.onclick = () => {
+    if (busy || !authReady) return;
+
+    if (!imageMode && selectedAttachments.length) {
+      showToast('Invia o rimuovi gli allegati prima di creare un’immagine.');
+      return;
+    }
+
+    imageMode = !imageMode;
+
+    imageModeBtn.setAttribute('aria-pressed', String(imageMode));
+    imageModeBtn.classList.toggle('active', imageMode);
+    imageModeBtn.style.borderColor = imageMode
+      ? 'var(--accent, #8b7cff)'
+      : '';
+
+    promptEl.placeholder = imageMode
+      ? 'Descrivi l’immagine che vuoi creare…'
+      : 'Scrivi a Lorenzo AI…';
+
+    showToast(
+      imageMode
+        ? 'Modalità creazione immagini attivata.'
+        : 'Modalità chat normale attivata.'
+    );
+
+    resizeInput();
+    promptEl.focus();
+  };
+}
 
 $('#newChat').onclick = newChat;
 $('#menuBtn').onclick = () => $('#sidebar').classList.add('open');
