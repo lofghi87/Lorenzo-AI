@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#101014">
   <title>Accedi — Lorenzo AI</title>
   <link rel="stylesheet" href="/style.css">
+
   <style>
     body {
       min-height: 100vh;
@@ -17,68 +18,209 @@
         radial-gradient(ellipse at 50% 0%, #302544 0, transparent 55%),
         var(--bg);
     }
-    .login-page { width: 100%; max-width: 420px; }
+
+    .login-page {
+      width: 100%;
+      max-width: 420px;
+    }
+
     .login-brand {
-      display: flex; align-items: center; justify-content: center;
-      gap: 11px; margin-bottom: 34px; font-size: 23px;
-      font-weight: 700; letter-spacing: -1px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 13px;
+      margin-bottom: 34px;
+      font-size: 23px;
+      font-weight: 700;
+      letter-spacing: -1px;
     }
+
+    /* Nuovo logo Lorenzo AI */
+    .login-brand .brand-mark {
+      width: 52px;
+      height: 52px;
+      flex: 0 0 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border-radius: 15px;
+      background: #09090c;
+      border: 1px solid rgba(255,255,255,.12);
+      box-shadow: 0 0 24px rgba(99, 230, 218, .10);
+    }
+
+    .login-brand .brand-mark img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
     .login-card {
-      padding: 30px; border: 1px solid var(--line);
+      padding: 30px;
+      border: 1px solid var(--line);
       background: color-mix(in srgb, var(--panel) 94%, transparent);
-      border-radius: 22px; box-shadow: var(--shadow);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
     }
-    .login-card h1 { margin: 0 0 9px; font-size: 27px; letter-spacing: -1px; }
-    .login-subtitle { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 26px; }
-    .login-card label { display: block; font-size: 12px; margin: 16px 0 7px; }
+
+    .login-card h1 {
+      margin: 0 0 9px;
+      font-size: 27px;
+      letter-spacing: -1px;
+    }
+
+    .login-subtitle {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 26px;
+    }
+
+    .login-card label {
+      display: block;
+      font-size: 12px;
+      margin: 16px 0 7px;
+    }
+
     .login-card input {
-      display: block; width: 100%; padding: 13px;
-      color: var(--text); background: var(--bg);
-      border: 1px solid var(--line); border-radius: 10px;
-      outline: none; font: inherit; font-size: 14px;
+      display: block;
+      width: 100%;
+      padding: 13px;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      outline: none;
+      font: inherit;
+      font-size: 14px;
     }
-    .login-card input:focus { border-color: var(--accent2); }
-    .login-primary, .login-secondary {
-      width: 100%; padding: 12px; border-radius: 10px;
-      font: inherit; font-size: 13px; font-weight: 700;
-      margin-top: 15px; cursor: pointer;
+
+    .login-card input:focus {
+      border-color: var(--accent2);
     }
-    .login-primary { background: var(--accent); color: #19151f; border: 0; }
-    .login-secondary { background: transparent; color: var(--text); border: 1px solid var(--line); margin-top: 9px; }
-    .login-primary:disabled, .login-secondary:disabled { opacity: .6; cursor: wait; }
-    .login-message { font-size: 12px; line-height: 1.6; margin-top: 17px; overflow-wrap: anywhere; }
-    .login-back { display: block; text-align: center; margin-top: 22px; color: var(--muted); font-size: 12px; text-decoration: none; }
-    .login-back:hover { color: var(--text); }
-    @media(max-width:480px) { .login-card { padding: 23px; } }
+
+    .login-primary,
+    .login-secondary {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      margin-top: 15px;
+      cursor: pointer;
+    }
+
+    .login-primary {
+      background: var(--accent);
+      color: #19151f;
+      border: 0;
+    }
+
+    .login-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--line);
+      margin-top: 9px;
+    }
+
+    .login-primary:disabled,
+    .login-secondary:disabled {
+      opacity: .6;
+      cursor: wait;
+    }
+
+    .login-message {
+      font-size: 12px;
+      line-height: 1.6;
+      margin-top: 17px;
+      overflow-wrap: anywhere;
+    }
+
+    .login-back {
+      display: block;
+      text-align: center;
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: 12px;
+      text-decoration: none;
+    }
+
+    .login-back:hover {
+      color: var(--text);
+    }
+
+    @media(max-width:480px) {
+      .login-card {
+        padding: 23px;
+      }
+    }
   </style>
 </head>
+
 <body>
   <main class="login-page">
+
     <div class="login-brand">
-      <div class="brand-mark">✳</div>
+      <div class="brand-mark">
+        <img src="/lorenzo-ai-logo.png" alt="Logo Lorenzo AI">
+      </div>
+
       <span>Lorenzo <b style="color:var(--accent)">AI</b></span>
     </div>
 
     <section class="login-card">
       <h1 id="formTitle">Bentornato.</h1>
+
       <p class="login-subtitle" id="formSubtitle">
         Accedi al tuo spazio personale e ritrova tutte le tue conversazioni.
       </p>
 
       <form id="loginForm">
         <label for="email">Indirizzo email</label>
-        <input id="email" type="email" autocomplete="email"
-          placeholder="nome@esempio.it" required>
+        <input
+          id="email"
+          type="email"
+          autocomplete="email"
+          placeholder="nome@esempio.it"
+          required
+        >
 
         <label for="password">Password</label>
-        <input id="password" type="password"
-          autocomplete="current-password" minlength="6"
-          placeholder="Almeno 6 caratteri" required>
+        <input
+          id="password"
+          type="password"
+          autocomplete="current-password"
+          minlength="6"
+          placeholder="Almeno 6 caratteri"
+          required
+        >
 
-        <button class="login-primary" id="submitBtn" type="submit">Accedi</button>
-        <button class="login-secondary" id="signupBtn" type="button">Crea un account</button>
-        <button class="login-secondary" id="logoutBtn" type="button" hidden>Esci dall'account</button>
-        <p class="login-message" id="loginMessage" role="status" aria-live="polite"></p>
+        <button class="login-primary" id="submitBtn" type="submit">
+          Accedi
+        </button>
+
+        <button class="login-secondary" id="signupBtn" type="button">
+          Crea un account
+        </button>
+
+        <button
+          class="login-secondary"
+          id="logoutBtn"
+          type="button"
+          hidden
+        >
+          Esci dall'account
+        </button>
+
+        <p
+          class="login-message"
+          id="loginMessage"
+          role="status"
+          aria-live="polite"
+        ></p>
       </form>
     </section>
 
@@ -86,6 +228,7 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <script>
     const client = window.supabase.createClient(
       'https://bknkgctmpgiuxvahbbzs.supabase.co',
@@ -93,7 +236,6 @@
     );
 
     const $ = id => document.getElementById(id);
-    let mode = 'login';
 
     function message(text) {
       $('loginMessage').textContent = text;
@@ -105,24 +247,37 @@
     }
 
     async function updatePage() {
-      const { data } = await client.auth.getSession();
+      const { data, error } = await client.auth.getSession();
+
+      if (error) {
+        message('Impossibile verificare la sessione. Riprova.');
+        return;
+      }
+
       const user = data.session?.user;
 
       if (user) {
         $('formTitle').textContent = 'Sei già connesso.';
         $('formSubtitle').textContent = user.email;
+
         $('email').hidden = true;
         $('password').hidden = true;
-        document.querySelectorAll('.login-card label').forEach(x => x.hidden = true);
+
+        document.querySelectorAll('.login-card label').forEach(label => {
+          label.hidden = true;
+        });
+
         $('submitBtn').hidden = true;
         $('signupBtn').hidden = true;
         $('logoutBtn').hidden = false;
+
         message('Il tuo account è attivo.');
       }
     }
 
     $('loginForm').addEventListener('submit', async event => {
       event.preventDefault();
+
       setBusy(true);
       message('Accesso in corso…');
 
@@ -154,7 +309,9 @@
       const { data, error } = await client.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: window.location.origin + '/login.html' }
+        options: {
+          emailRedirectTo: window.location.origin + '/login.html'
+        }
       });
 
       setBusy(false);
@@ -169,20 +326,28 @@
         return;
       }
 
-      message('Account creato! Controlla la tua email e conferma la registrazione, poi torna qui per accedere.');
+      message(
+        'Account creato! Controlla la tua email e conferma la registrazione, poi torna qui per accedere.'
+      );
     });
 
     $('logoutBtn').addEventListener('click', async () => {
       const { error } = await client.auth.signOut();
+
       if (error) {
         message(error.message);
         return;
       }
+
       window.location.reload();
     });
 
     client.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session && !window.location.pathname.endsWith('/login.html')) {
+      if (
+        event === 'SIGNED_IN' &&
+        session &&
+        !window.location.pathname.endsWith('/login.html')
+      ) {
         window.location.replace('/');
       }
     });
