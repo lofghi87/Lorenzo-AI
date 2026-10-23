@@ -1,8 +1,18 @@
 
 const MAX_MESSAGES = 40;
 const MAX_TEXT_LENGTH = 12000;
-const MAX_FILE_SIZE = 2 * 1024 * 1024;
-const MAX_TOTAL_FILES = 3 * 1024 * 1024;
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_TOTAL_FILES = 20 * 1024 * 1024;
+const MAX_FILES = 5;
+
+// Limiti mantenuti per gli allegati inviati direttamente in Base64.
+const LEGACY_MAX_FILE_SIZE = 2 * 1024 * 1024;
+const LEGACY_MAX_TOTAL_SIZE = 3 * 1024 * 1024;
+
+const SUPABASE_URL = 'https://bknkgctmpgiuxvahbbzs.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY =
+  'sb_publishable_rZEaUwMU4CCl7kUPdUlvuw_cuX2n9hB';
+const BUCKET = 'lorenzo-attachments';
 
 const ALLOWED_TYPES = new Set([
   'image/jpeg',
@@ -12,6 +22,141 @@ const ALLOWED_TYPES = new Set([
   'image/heif',
   'application/pdf'
 ]);
+
+function errorMessage(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+}
+
+async function uploadToGemini(apiKey, buffer, mimeType, name) {
+  const start = await fetch(
+    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: {
+        'X-Goog-Upload-Protocol': 'resumable',
+        'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Length': String(buffer.length),
+        'X-Goog-Upload-Header-Content-Type': mimeType,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        file: { display_name: name }
+      })
+    }
+  );
+
+  if (!start.ok) {
+    throw new Error('Non riesco ad avviare il caricamento del file su Gemini.');
+  }
+
+  const uploadUrl = start.headers.get('x-goog-upload-url');
+
+  if (!uploadUrl) {
+    throw new Error('Gemini non ha restituito l’indirizzo di caricamento.');
+  }
+
+  const finish = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize',
+      'Content-Type': mimeType,
+      'Content-Length': String(buffer.length)
+    },
+    body: buffer
+  });
+
+  const result = await finish.json();
+
+  if (!finish.ok || !result.file?.uri || !result.file?.name) {
+    throw new Error('Gemini non è riuscito a ricevere il file.');
+  }
+
+  return result.file;
+}
+
+async function verifyUser(accessToken) {
+  if (!accessToken) {
+    throw errorMessage(
+      'Per usare allegati fino a 10 MB devi accedere al tuo account.'
+    );
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    throw errorMessage('Sessione scaduta. Accedi nuovamente.');
+  }
+
+  const user = await response.json();
+
+  if (!user.id) {
+    throw errorMessage('Non è stato possibile verificare il tuo account.');
+  }
+
+  return user.id;
+}
+
+async function downloadFromStorage(path, userId, serviceKey) {
+  if (
+    typeof path !== 'string' ||
+    path.length > 1024 ||
+    path.startsWith('/') ||
+    path.split('/').some(part =>
+      !part || part === '.' || part === '..'
+    ) ||
+    path.split('/')[0] !== userId
+  ) {
+    throw errorMessage('Percorso allegato non valido.');
+  }
+
+  const encodedPath = path
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/');
+
+  const response = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${encodedPath}`,
+    {
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw errorMessage(
+      'Non riesco a leggere un allegato da Supabase Storage.'
+    );
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  if (buffer.length > MAX_FILE_SIZE) {
+    throw errorMessage('Ogni file deve essere massimo 10 MB.');
+  }
+
+  return buffer;
+}
+
+async function deleteGeminiFile(apiKey, fileName) {
+  try {
+    await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${encodeURIComponent(apiKey)}`,
+      { method: 'DELETE' }
+    );
+  } catch (error) {
+    console.error('Pulizia file Gemini non riuscita:', error.message);
+  }
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -24,6 +169,7 @@ module.exports = async function handler(req, res) {
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!apiKey) {
     return res.status(503).json({
@@ -33,94 +179,176 @@ module.exports = async function handler(req, res) {
 
   const messages = req.body?.messages;
 
-  if (!Array.isArray(messages) || messages.length === 0) {
+  if (!Array.isArray(messages) || !messages.length) {
     return res.status(400).json({
       error: 'Nessun messaggio ricevuto.'
     });
   }
 
-  let totalBytes = 0;
+  const accessToken = String(
+    req.headers.authorization || ''
+  ).replace(/^Bearer\s+/i, '');
+
+  const uploadedGeminiFiles = [];
 
   try {
-    const contents = messages
-      .slice(-MAX_MESSAGES)
-      .filter(m =>
-        m &&
-        ['user', 'assistant'].includes(m.role) &&
-        (
-          String(m.content || '').trim() ||
-          (m.role === 'user' &&
-            Array.isArray(m.attachments) &&
-            m.attachments.length > 0)
-        )
+    const hasStorageAttachments = messages.some(message =>
+      message?.role === 'user' &&
+      Array.isArray(message.attachments) &&
+      message.attachments.some(file =>
+        file && typeof file.path === 'string'
       )
-      .map(m => {
-        const parts = [];
-        const text = String(m.content || '').slice(0, MAX_TEXT_LENGTH);
+    );
 
-        if (text.trim()) {
-          parts.push({ text });
+    let userId = null;
+
+    if (hasStorageAttachments) {
+      if (!serviceKey) {
+        return res.status(503).json({
+          error: 'Configurazione Supabase mancante su Vercel.'
+        });
+      }
+
+      userId = await verifyUser(accessToken);
+    }
+
+    let totalBytes = 0;
+    let legacyTotalBytes = 0;
+    const contents = [];
+
+    for (const message of messages.slice(-MAX_MESSAGES)) {
+      if (
+        !message ||
+        !['user', 'assistant'].includes(message.role)
+      ) {
+        continue;
+      }
+
+      const text = String(message.content || '')
+        .slice(0, MAX_TEXT_LENGTH);
+
+      const attachments =
+        message.role === 'user' &&
+        Array.isArray(message.attachments)
+          ? message.attachments
+          : [];
+
+      if (!text.trim() && !attachments.length) {
+        continue;
+      }
+
+      if (attachments.length > MAX_FILES) {
+        throw errorMessage(
+          'Puoi allegare al massimo 5 file per messaggio.'
+        );
+      }
+
+      const parts = [];
+
+      if (text.trim()) {
+        parts.push({ text });
+      }
+
+      for (const file of attachments) {
+        if (!file || typeof file !== 'object') {
+          throw errorMessage('Un allegato non è valido.');
         }
 
-        // Solo i messaggi dell'utente possono contenere allegati.
-        if (m.role === 'user' && Array.isArray(m.attachments)) {
-          if (m.attachments.length > 4) {
-            throw new Error('Puoi allegare al massimo 4 file per messaggio.');
-          }
+        const mimeType = String(file.mimeType || '')
+          .toLowerCase();
 
-          for (const file of m.attachments) {
-            if (!file || typeof file.data !== 'string') {
-              throw new Error('Un allegato non è valido.');
-            }
-
-            const mimeType = String(file.mimeType || '').toLowerCase();
-
-            if (!ALLOWED_TYPES.has(mimeType)) {
-              throw new Error(
-                'Formato non supportato. Usa immagini JPG, PNG, WebP, HEIC o PDF.'
-              );
-            }
-
-            // Accetta solo base64 standard, senza prefisso data:.
-            const base64 = file.data;
-
-            if (
-              !base64 ||
-              base64.length % 4 !== 0 ||
-              !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)
-            ) {
-              throw new Error('Un allegato non contiene dati validi.');
-            }
-
-            const estimatedBytes =
-              Math.floor(base64.length * 3 / 4) -
-              (base64.endsWith('==') ? 2 :
-                base64.endsWith('=') ? 1 : 0);
-
-            if (estimatedBytes > MAX_FILE_SIZE) {
-              throw new Error('Ogni file deve essere inferiore a 2 MB.');
-            }
-
-            totalBytes += estimatedBytes;
-
-            if (totalBytes > MAX_TOTAL_FILES) {
-              throw new Error('Gli allegati superano il limite totale di 3 MB.');
-            }
-
-            parts.push({
-              inlineData: {
-                mimeType,
-                data: base64
-              }
-            });
-          }
+        if (!ALLOWED_TYPES.has(mimeType)) {
+          throw errorMessage(
+            'Formato non supportato. Usa JPG, PNG, WebP, HEIC, HEIF o PDF.'
+          );
         }
 
-        return {
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts
-        };
+        let buffer;
+
+        if (typeof file.path === 'string') {
+          if (!userId || !serviceKey) {
+            throw errorMessage(
+              'Accedi per utilizzare gli allegati grandi.'
+            );
+          }
+
+          buffer = await downloadFromStorage(
+            file.path,
+            userId,
+            serviceKey
+          );
+
+          totalBytes += buffer.length;
+
+          if (totalBytes > MAX_TOTAL_FILES) {
+            throw errorMessage(
+              'Gli allegati superano il limite totale di 20 MB.'
+            );
+          }
+        } else if (typeof file.data === 'string') {
+          const base64 = file.data;
+
+          if (
+            !base64 ||
+            base64.length % 4 !== 0 ||
+            !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)
+          ) {
+            throw errorMessage('Un allegato non contiene dati validi.');
+          }
+
+          buffer = Buffer.from(base64, 'base64');
+
+          if (buffer.toString('base64') !== base64) {
+            throw errorMessage('I dati dell’allegato non sono validi.');
+          }
+
+          if (buffer.length > LEGACY_MAX_FILE_SIZE) {
+            throw errorMessage(
+              'Per allegati grandi, accedi al tuo account e caricali su Supabase.'
+            );
+          }
+
+          legacyTotalBytes += buffer.length;
+
+          if (legacyTotalBytes > LEGACY_MAX_TOTAL_SIZE) {
+            throw errorMessage(
+              'Gli allegati inviati direttamente superano 3 MB.'
+            );
+          }
+        } else {
+          throw errorMessage('Un allegato non è valido.');
+        }
+
+        if (buffer.length > MAX_FILE_SIZE) {
+          throw errorMessage('Ogni file deve essere massimo 10 MB.');
+        }
+
+        const fileName = String(file.name || 'allegato')
+          .replace(/[^a-zA-Z0-9._-]/g, '_')
+          .slice(0, 100);
+
+        const uploaded = await uploadToGemini(
+          apiKey,
+          buffer,
+          mimeType,
+          fileName
+        );
+
+        uploadedGeminiFiles.push(uploaded.name);
+
+        parts.push({
+          fileData: {
+            mimeType,
+            fileUri: uploaded.uri
+          }
+        });
+      }
+
+      contents.push({
+        role: message.role === 'assistant' ? 'model' : 'user',
+        parts
       });
+    }
 
     if (!contents.length) {
       return res.status(400).json({
@@ -139,7 +367,7 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({
           systemInstruction: {
             parts: [{
-              text: 'Sei Lorenzo AI, un assistente utile e chiaro. Rispondi in italiano quando l’utente scrive in italiano. Quando ricevi immagini o PDF, analizza il contenuto fornito e rispondi alla domanda dell’utente.'
+              text: 'Sei Lorenzo AI, un assistente utile e chiaro. Rispondi in italiano quando l’utente scrive in italiano. Quando ricevi immagini o PDF, analizza il contenuto e rispondi alla domanda dell’utente.'
             }]
           },
           contents,
@@ -177,8 +405,16 @@ module.exports = async function handler(req, res) {
 
     return res.status(200).json({ reply });
   } catch (error) {
-    return res.status(400).json({
-      error: error.message || 'Allegato non valido.'
+    console.error('Errore /api/chat:', error);
+
+    return res.status(error.statusCode || 500).json({
+      error: error.message || 'Si è verificato un errore durante la richiesta.'
     });
+  } finally {
+    await Promise.all(
+      uploadedGeminiFiles.map(fileName =>
+        deleteGeminiFile(apiKey, fileName)
+      )
+    );
   }
 };
