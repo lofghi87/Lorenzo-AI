@@ -1,4 +1,3 @@
-
 const SUPABASE_URL = 'https://bknkgctmpgiuxvahbbzs.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_rZEaUwMU4CCl7kUPdUlvuw_cuX2n9hB';
 
@@ -179,13 +178,10 @@ function renderMarkdown(el, text) {
   });
 }
 
+/* Crea i messaggi senza avatar o iniziali. */
 function addMessage(role, content, scroll = true, attachmentNames = []) {
   const wrap = document.createElement('div');
   wrap.className = 'message ' + role;
-
-  const avatar = document.createElement('div');
-  avatar.className = 'avatar';
-  avatar.textContent = role === 'user' ? 'L' : '✳';
 
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
@@ -216,7 +212,7 @@ function addMessage(role, content, scroll = true, attachmentNames = []) {
     bubble.append(list);
   }
 
-  wrap.append(avatar, bubble);
+  wrap.append(bubble);
   messagesEl.append(wrap);
 
   if (scroll) scrollBottom();
@@ -551,14 +547,10 @@ async function handleFiles(fileList) {
   resizeInput();
 }
 
-/* Visualizza l'immagine generata nella conversazione. */
+/* Visualizza l'immagine generata senza avatar. */
 function addGeneratedImage(imageData, promptText) {
   const wrap = document.createElement('div');
   wrap.className = 'message assistant';
-
-  const avatar = document.createElement('div');
-  avatar.className = 'avatar';
-  avatar.textContent = '✳';
 
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
@@ -579,12 +571,14 @@ function addGeneratedImage(imageData, promptText) {
 
   const download = document.createElement('a');
   download.href = imageData;
-  download.download = 'lorenzo-ai-immagine.png';
+  download.download = 'lorenzo-ai-immagine.' +
+    (imageData.startsWith('data:image/jpeg') ? 'jpg' :
+      imageData.startsWith('data:image/webp') ? 'webp' : 'png');
   download.textContent = 'Scarica immagine';
   download.style.cssText = 'display:inline-block;margin-top:10px';
 
   bubble.append(download);
-  wrap.append(avatar, bubble);
+  wrap.append(bubble);
   messagesEl.append(wrap);
 
   scrollBottom();
