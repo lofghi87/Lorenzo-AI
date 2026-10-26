@@ -9,86 +9,74 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
 
-  if (!apiKey) {
+  if (!accountId || !apiToken) {
     return res.status(503).json({
-      error: 'Manca GEMINI_API_KEY nelle variabili di Vercel.'
+      error: 'Mancano CLOUDFLARE_ACCOUNT_ID o CLOUDFLARE_API_TOKEN nelle variabili di Vercel.'
     });
   }
 
   const prompt = String(req.body?.prompt || '').trim();
 
-  if (!prompt || prompt.length > 2000) {
+  if (!prompt || prompt.length > 2048) {
     return res.status(400).json({
-      error: 'La descrizione deve contenere da 1 a 2000 caratteri.'
+      error: 'La descrizione deve contenere da 1 a 2048 caratteri.'
     });
   }
 
   try {
     const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/interactions',
+      'https://api.cloudflare.com/client/v4/accounts/' +
+        encodeURIComponent(accountId) +
+        '/ai/run/@cf/black-forest-labs/flux-1-schnell',
       {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey
+          'Authorization': 'Bearer ' + apiToken,
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gemini-3.1-flash-image',
-          input: prompt,
-          response_format: {
-            type: 'image',
-            mime_type: 'image/jpeg',
-            aspect_ratio: '1:1',
-            image_size: '1K'
-          }
+          prompt,
+          steps: 4
         })
       }
     );
 
     const data = await response.json();
 
-    if (!response.ok) {
-      console.error('Errore API immagini:', response.status, data);
-
-      const apiMessage =
-        data?.error?.message ||
-        data?.message ||
-        'Il servizio Google non ha fornito dettagli.';
-
-      return res.status(502).json({
-        error: 'Google API (' + response.status + '): ' +
-          String(apiMessage).slice(0, 500)
-      });
-    }
-
-    const image = data.output_image;
-
-    if (!image?.data) {
+    if (!response.ok || data.success === false) {
       console.error(
-        'Risposta senza output_image:',
-        JSON.stringify(data).slice(0, 1500)
+        'Errore Cloudflare immagini:',
+        response.status,
+        data.errors
       );
 
       return res.status(502).json({
-        error: 'La richiesta è stata accettata, ma non è arrivata un’immagine.'
+        error: 'Cloudflare API (' + response.status + '): ' +
+          String(
+            data.errors?.[0]?.message ||
+            'Impossibile generare l’immagine.'
+          ).slice(0, 400)
       });
     }
 
-    const mimeType = image.mime_type || 'image/png';
+    const image = data.result?.image;
 
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
+    if (!image || typeof image !== 'string') {
+      console.error('Risposta Cloudflare senza immagine.');
+
       return res.status(502).json({
-        error: 'Formato immagine restituito non supportato.'
+        error: 'Il servizio non ha restituito un’immagine valida.'
       });
     }
 
     return res.status(200).json({
-      image: 'data:' + mimeType + ';base64,' + image.data
+      image: 'data:image/jpeg;base64,' + image
     });
   } catch (error) {
-    console.error('Errore di connessione:', error.message);
+    console.error('Errore di connessione Cloudflare:', error.message);
 
     return res.status(502).json({
       error: 'Errore di connessione al servizio immagini.'
