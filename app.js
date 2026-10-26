@@ -552,8 +552,15 @@ function addGeneratedImage(imageData, promptText) {
   scrollBottom();
 }
 
+/* Generazione immagini: richiede sempre una sessione autenticata. */
 async function generateImage(promptText) {
   if (busy || !authReady) return;
+
+  if (!currentUser) {
+    showToast('Accedi al tuo account per creare immagini.');
+    window.location.href = '/login.html';
+    return;
+  }
 
   let c = current();
   if (!c) {
@@ -580,9 +587,21 @@ async function generateImage(promptText) {
   let reply = '';
 
   try {
+    const { data: sessionData, error: sessionError } =
+      await supabaseClient.auth.getSession();
+
+    const accessToken = sessionData?.session?.access_token;
+
+    if (sessionError || !currentUser || !accessToken) {
+      throw new Error('Accedi nuovamente per creare immagini.');
+    }
+
     const response = await fetch('/api/generate-image', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`
+      },
       body: JSON.stringify({ prompt: promptText })
     });
 
@@ -593,7 +612,12 @@ async function generateImage(promptText) {
       throw new Error('Il server ha restituito una risposta non valida.');
     }
 
-    if (!response.ok) throw new Error(data.error || 'Generazione non riuscita.');
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Sessione scaduta. Accedi nuovamente.');
+      }
+      throw new Error(data.error || 'Generazione non riuscita.');
+    }
 
     if (
       typeof data.image !== 'string' ||
@@ -627,6 +651,12 @@ async function sendMessage(text) {
   if ((!text && selectedAttachments.length === 0) || busy || !authReady) return;
 
   if (imageMode) {
+    if (!currentUser) {
+      showToast('Accedi al tuo account per creare immagini.');
+      window.location.href = '/login.html';
+      return;
+    }
+
     if (!text) {
       showToast('Scrivi una descrizione per l’immagine.');
       return;
@@ -802,6 +832,12 @@ if (imageModeBtn) {
   imageModeBtn.setAttribute('aria-pressed', 'false');
   imageModeBtn.onclick = () => {
     if (busy || !authReady) return;
+
+    if (!currentUser) {
+      showToast('Accedi al tuo account per creare immagini.');
+      window.location.href = '/login.html';
+      return;
+    }
 
     if (!imageMode && selectedAttachments.length) {
       showToast('Invia o rimuovi gli allegati prima di creare un’immagine.');
