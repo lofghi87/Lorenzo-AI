@@ -1,9 +1,9 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/style.css", "destination": "/public/style.css" },
-    { "source": "/app.js", "destination": "/public/app.js" },
-    { "source": "/", "destination": "/public/index.html" },
-    { "source": "/((?!api/).*)", "destination": "/public/index.html" }
+    {
+      "source": "/((?!api/|sitemap\\.xml$|style\\.css$|app\\.js$|chat\\.js$|status\\.js$|login\\.html$|lorenzo-ai-logo\\.png$|favicon\\.svg$).*)",
+      "destination": "/index.html"
+    }
   ]
 }
