@@ -1400,7 +1400,7 @@ async function refreshChatUsage() {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'Limite chat non disponibile.');
 
-    const limit = Math.max(1, Number(data.limit) || 80);
+    const limit = Math.max(1, Number(data.limit) || 40);
     const used = Math.max(0, Math.min(limit, Number(data.used) || 0));
     const remaining = Math.max(0, Math.min(limit, Number(data.remaining) || 0));
     count.textContent = remaining + ' di ' + limit;
