@@ -110,10 +110,24 @@ test('rejects too many attachments in one message', async () => {
 test('streams a provider response as valid server-sent events', async () => {
   const originalFetch = global.fetch;
   const originalServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
 
   global.fetch = async url => {
-    assert.match(String(url), /streamGenerateContent\?alt=sse/);
+    if (String(url).includes('/rest/v1/rpc/consume_ai_chat_request')) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [{
+            allowed: true,
+            remaining: 11,
+            resets_at: '2026-10-28T00:00:00.000Z'
+          }];
+        }
+      };
+    }
+
+    assert.match(String(url), /streamGenerateContent\\?alt=sse/);
     const encoder = new TextEncoder();
     return {
       ok: true,
@@ -124,7 +138,7 @@ test('streams a provider response as valid server-sent events', async () => {
             'data: {"candidates":[{"content":{"parts":[{"text":"Ci'
           ));
           controller.enqueue(encoder.encode(
-            'ao"}]}}]}\n\n'
+            'ao"}]}}]}\\n\\n'
           ));
           controller.close();
         }
