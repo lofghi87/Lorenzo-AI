@@ -280,8 +280,46 @@
       <span class="setting-tag" id="settingsTag">...</span>
     </div>
 
+    <div class="setting-row theme-setting-row">
+      <div>
+        <b>Aspetto</b>
+        <small id="settingsThemeStatus">Tema scuro attivo</small>
+      </div>
+      <button type="button" class="setting-tag setting-theme-btn" id="settingsThemeBtn">Usa tema chiaro</button>
+    </div>
+
+    <section class="usage-card" aria-labelledby="imageUsageHeading">
+      <div class="usage-heading">
+        <div>
+          <b id="imageUsageHeading">Utilizzo immagini</b>
+          <small>Limite giornaliero del tuo account</small>
+        </div>
+        <button type="button" class="usage-refresh" id="refreshUsageBtn" aria-label="Aggiorna utilizzo immagini" title="Aggiorna">↻</button>
+      </div>
+
+      <div class="usage-count-row">
+        <strong id="imageUsageCount">—</strong>
+        <span>immagini disponibili oggi</span>
+      </div>
+
+      <div
+        class="usage-meter"
+        id="imageUsageMeter"
+        role="progressbar"
+        aria-label="Immagini generate oggi"
+        aria-valuemin="0"
+        aria-valuemax="5"
+        aria-valuenow="0"
+      >
+        <span class="usage-meter-fill" id="imageUsageFill"></span>
+      </div>
+
+      <small class="usage-detail" id="imageUsageDetail">Caricamento utilizzo…</small>
+      <small class="usage-reset" id="imageUsageReset">Il limite si azzera ogni giorno.</small>
+    </section>
+
     <div class="setting-info">
-      Lorenzo AI utilizza un servizio AI per generare le risposte.
+      Lorenzo AI utilizza servizi AI per generare risposte e immagini.
       Non inserire chiavi API o password nei messaggi.
     </div>
 
