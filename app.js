@@ -213,8 +213,38 @@ function resizeInput() {
   if (imageModeBtn) imageModeBtn.disabled = busy || !authReady;
 }
 
-function renderAssistantText(el, text) {
+function renderAssistantText(el, text, animate = false) {
   renderMarkdown(el, text);
+
+  // Anima i blocchi già formattati: evita di mostrare Markdown a metà.
+  if (animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    Array.from(el.children).forEach((node, index) => {
+      node.classList.add('response-reveal');
+      node.style.animationDelay = Math.min(index * 55, 275) + 'ms';
+    });
+  }
+}
+
+function setThinkingState(el, label) {
+  if (!el) return;
+  el.replaceChildren();
+
+  const state = document.createElement('span');
+  state.className = 'thinking-state';
+
+  const message = document.createElement('span');
+  message.textContent = label;
+
+  const dots = document.createElement('span');
+  dots.className = 'thinking-dots';
+  dots.setAttribute('aria-hidden', 'true');
+
+  for (let i = 0; i < 3; i += 1) {
+    dots.append(document.createElement('span'));
+  }
+
+  state.append(message, dots);
+  el.append(state);
 }
 
 function setupAccountButton() {
@@ -583,7 +613,8 @@ async function generateImage(promptText) {
   busy = true;
   resizeInput();
 
-  const status = addMessage('assistant', 'Sto creando la tua immagine…');
+  const status = addMessage('assistant', '');
+  setThinkingState(status, 'Sto creando la tua immagine');
   let reply = '';
 
   try {
@@ -710,7 +741,7 @@ async function sendMessage(text) {
   resizeInput();
 
   const thinking = addMessage('assistant', '', false);
-  thinking.textContent = attachments.length ? 'Sto caricando gli allegati…' : 'Sto pensando…';
+  setThinkingState(thinking, attachments.length ? 'Sto caricando gli allegati' : 'Sto pensando');
   scrollBottom();
 
   let reply = '';
@@ -766,7 +797,7 @@ async function sendMessage(text) {
       return outgoing;
     });
 
-    thinking.textContent = 'Sto pensando…';
+    setThinkingState(thinking, 'Sto pensando');
 
     const headers = { 'Content-Type': 'application/json' };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
@@ -795,7 +826,7 @@ async function sendMessage(text) {
       (error.message || 'Controlla la connessione e riprova.');
   }
 
-  renderAssistantText(thinking, reply);
+  renderAssistantText(thinking, reply, true);
   c.messages.push({ role: 'assistant', content: reply });
   await saveChat(c);
   busy = false;
