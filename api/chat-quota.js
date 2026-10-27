@@ -50,7 +50,7 @@ module.exports = async function handler(req, res) {
 
     const query = new URLSearchParams({
       select: 'request_count',
-      user_id: `eq.${user.id}`,
+      client_key: `eq.${user.id}`,
       usage_date: `eq.${todayUtc}`,
       limit: '1'
     });
