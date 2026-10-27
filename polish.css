@@ -1,0 +1,294 @@
+/* Lorenzo AI — rifinitura visiva v1 */
+:root {
+  --accent: #c8b9ff;
+  --accent2: #9d88ff;
+  --line: #302d3a;
+  --shadow: 0 22px 70px rgba(0, 0, 0, .28);
+}
+body {
+  background:
+    radial-gradient(ellipse at 58% -18%, rgba(129, 100, 220, .13), transparent 48%),
+    var(--bg);
+  letter-spacing: .005em;
+}
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+button:focus-visible, a:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 3px;
+}
+.sidebar {
+  background: rgba(20, 20, 26, .96);
+  border-right-color: rgba(255,255,255,.075);
+  backdrop-filter: blur(18px);
+}
+.brand {
+  padding-bottom: 24px;
+}
+.brand-mark {
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 5px 22px rgba(157,135,255,.12);
+}
+.new-chat {
+  min-height: 43px;
+  background: linear-gradient(135deg, rgba(157,135,255,.14), rgba(157,135,255,.045));
+  border-color: rgba(183,164,255,.24);
+}
+.new-chat, .icon-btn, .profile, .tool-btn, .send-btn, .suggestion {
+  transition: background .18s ease, border-color .18s ease, color .18s ease,
+    transform .18s ease, box-shadow .18s ease;
+}
+.new-chat:hover, .suggestion:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 7px 22px rgba(0,0,0,.13);
+}
+.history-item {
+  border: 1px solid transparent;
+  transition: background .16s ease, border-color .16s ease;
+}
+.history-item.active {
+  border-color: rgba(183,164,255,.12);
+}
+.topbar {
+  background: rgba(16,16,20,.68);
+  border-bottom-color: rgba(255,255,255,.07);
+  backdrop-filter: blur(18px);
+}
+.model-pill {
+  background: rgba(31,30,39,.82);
+  border-color: rgba(255,255,255,.1);
+  padding: 8px 13px;
+}
+.online-dot, .status-dot {
+  box-shadow: 0 0 0 4px rgba(131,215,173,.08), 0 0 13px rgba(131,215,173,.35);
+}
+.profile {
+  min-width: 34px;
+  min-height: 34px;
+  border-color: rgba(183,164,255,.34);
+  background: linear-gradient(145deg, #403657, #292337);
+}
+.profile:hover {
+  box-shadow: 0 0 0 4px rgba(183,164,255,.09);
+}
+.chat-area {
+  scrollbar-color: rgba(163,147,205,.28) transparent;
+}
+.welcome {
+  animation: welcome-in .48s cubic-bezier(.2,.7,.2,1) both;
+}
+.logo-welcome {
+  box-shadow: 0 0 0 8px rgba(183,164,255,.045), 0 12px 36px rgba(133,105,224,.15);
+}
+.eyebrow {
+  color: #c3b4ff;
+}
+.welcome h1 {
+  line-height: 1.06;
+  letter-spacing: -2.6px;
+}
+.welcome-sub {
+  color: #aaa7b8;
+}
+.suggestion {
+  position: relative;
+  min-height: 72px;
+  border-color: rgba(255,255,255,.085);
+  background: linear-gradient(145deg, rgba(29,28,36,.94), rgba(22,22,28,.94));
+}
+.suggestion-icon {
+  width: 35px;
+  height: 35px;
+  border: 1px solid rgba(183,164,255,.1);
+}
+.suggestion b {
+  font-size: 12px;
+}
+.suggestion small {
+  line-height: 1.45;
+}
+.suggestion .arrow {
+  transition: transform .18s ease, color .18s ease;
+}
+.suggestion:hover .arrow {
+  color: var(--accent);
+  transform: translate(2px,-2px);
+}
+.message {
+  gap: 13px;
+}
+.avatar {
+  border: 1px solid rgba(183,164,255,.13);
+  box-shadow: 0 3px 12px rgba(0,0,0,.1);
+}
+.message.user .bubble {
+  background: linear-gradient(145deg, #2c2937, #24222c);
+  border-color: rgba(183,164,255,.13);
+  border-radius: 18px 6px 18px 18px;
+  box-shadow: 0 5px 18px rgba(0,0,0,.08);
+}
+.message.assistant .bubble {
+  line-height: 1.8;
+}
+.message.assistant .bubble h1,
+.message.assistant .bubble h2,
+.message.assistant .bubble h3 {
+  font-family: Manrope, sans-serif;
+  line-height: 1.3;
+  letter-spacing: -.4px;
+  margin: 18px 0 9px;
+}
+.message.assistant .bubble ul,
+.message.assistant .bubble ol {
+  padding-left: 22px;
+}
+.message.assistant .bubble li {
+  padding-left: 3px;
+  margin: 4px 0;
+}
+.message.assistant .bubble blockquote {
+  border-left: 3px solid var(--accent2);
+  margin: 12px 0;
+  padding: 3px 0 3px 13px;
+  color: #bdb8cc;
+}
+.message.assistant .bubble a {
+  color: #c8b9ff;
+  text-underline-offset: 3px;
+}
+.message.assistant .bubble pre {
+  position: relative;
+  background: #121217;
+  border-color: rgba(255,255,255,.1);
+  border-radius: 13px;
+  white-space: pre;
+}
+.message.assistant .bubble pre code {
+  display: block;
+  background: transparent;
+  padding: 0;
+  line-height: 1.65;
+}
+.composer-wrap {
+  max-width: 850px;
+}
+.composer {
+  background: rgba(27,26,33,.94);
+  border-color: rgba(183,164,255,.19);
+  border-radius: 20px;
+  box-shadow: 0 15px 45px rgba(0,0,0,.18);
+  backdrop-filter: blur(18px);
+}
+.composer:focus-within {
+  border-color: rgba(183,164,255,.55);
+  box-shadow: 0 0 0 3px rgba(157,135,255,.07), 0 15px 45px rgba(0,0,0,.18);
+}
+.composer textarea {
+  font-size: 14px;
+}
+.tool-btn {
+  border-radius: 8px;
+  padding: 7px 8px;
+}
+.tool-btn:hover {
+  background: rgba(183,164,255,.08);
+}
+.tool-btn.active, #imageModeBtn[aria-pressed="true"] {
+  color: #d8ceff;
+  background: rgba(157,135,255,.14);
+  border-color: rgba(183,164,255,.3);
+}
+.send-btn {
+  box-shadow: 0 4px 14px rgba(157,135,255,.16);
+}
+.send-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+  background: #d7cbff;
+  box-shadow: 0 6px 20px rgba(157,135,255,.26);
+}
+.toast {
+  backdrop-filter: blur(14px);
+}
+dialog {
+  box-shadow: 0 30px 100px rgba(0,0,0,.45);
+}
+.primary-btn:hover {
+  filter: brightness(1.06);
+}
+body.light {
+  background:
+    radial-gradient(ellipse at 58% -18%, rgba(157,135,255,.12), transparent 48%),
+    var(--bg);
+}
+body.light .sidebar {
+  background: rgba(242,240,248,.96);
+}
+body.light .topbar {
+  background: rgba(247,246,250,.8);
+  border-bottom-color: rgba(40,30,60,.08);
+}
+body.light .suggestion {
+  background: linear-gradient(145deg, #fff, #f8f6fc);
+  border-color: rgba(60,45,90,.1);
+}
+body.light .composer {
+  background: rgba(255,255,255,.94);
+  border-color: rgba(90,70,130,.18);
+}
+body.light .message.user .bubble {
+  background: linear-gradient(145deg, #f0edf8, #eae6f4);
+  border-color: rgba(90,70,130,.12);
+}
+body.light .message.assistant .bubble blockquote {
+  color: #625a73;
+}
+body.light .message.assistant .bubble a {
+  color: #6b50bd;
+}
+body.light .message.assistant .bubble pre {
+  background: #f3f1f8;
+  border-color: #e5e0ef;
+}
+body.light .message.assistant .bubble code {
+  background: #ece8f5;
+}
+@keyframes welcome-in {
+  from { opacity: 0; transform: translateY(9px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}
+@media (max-width: 760px) {
+  .sidebar {
+    box-shadow: 22px 0 65px rgba(0,0,0,.28);
+  }
+  .topbar {
+    background: rgba(16,16,20,.82);
+  }
+  .chat-area {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .welcome h1 {
+    letter-spacing: -2px;
+  }
+  .suggestion {
+    min-height: 64px;
+  }
+  .composer {
+    border-radius: 17px;
+  }
+  .composer-tools {
+    gap: 5px;
+  }
+  .tool-btn {
+    font-size: 11px;
+  }
+}
