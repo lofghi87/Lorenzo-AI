@@ -435,6 +435,12 @@ module.exports = async function handler(req, res) {
     });
   }
 
+  if (!serviceKey) {
+    return res.status(503).json({
+      error: 'Configurazione dei limiti non disponibile. Controlla SUPABASE_SERVICE_ROLE_KEY nelle variabili server di Vercel.'
+    });
+  }
+
   const wantsStream = req.body?.stream === true;
   const messages = req.body?.messages;
 
