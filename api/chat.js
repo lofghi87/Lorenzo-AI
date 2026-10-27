@@ -158,6 +158,110 @@ async function deleteGeminiFile(apiKey, fileName) {
   }
 }
 
+
+function writeSse(res, payload) {
+  if (!res.writableEnded) {
+    res.write('data: ' + JSON.stringify(payload) + '\n\n');
+  }
+}
+
+async function streamGeminiResponse(upstream, res) {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.status(200);
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+  if (!upstream.body || typeof upstream.body.getReader !== 'function') {
+    writeSse(res, { error: 'Il servizio non supporta lo streaming in questa risposta.' });
+    res.end();
+    return;
+  }
+
+  const reader = upstream.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let collectedText = '';
+  let streamError = null;
+
+  const processEvent = eventText => {
+    const data = eventText
+      .split(/\r?\n/)
+      .filter(line => line.startsWith('data:'))
+      .map(line => line.slice(5).trimStart())
+      .join('\n');
+
+    if (!data || data === '[DONE]') return;
+
+    let payload;
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      return;
+    }
+
+    if (payload.error) {
+      streamError = String(payload.error.message || 'Errore durante la generazione della risposta.');
+      return;
+    }
+
+    const text = (payload.candidates?.[0]?.content?.parts || [])
+      .map(part => typeof part.text === 'string' ? part.text : '')
+      .join('');
+
+    if (text) {
+      collectedText += text;
+      writeSse(res, { text });
+    }
+  };
+
+  const consumeEvents = final => {
+    let match;
+    while ((match = /\r?\n\r?\n/.exec(buffer))) {
+      const eventText = buffer.slice(0, match.index);
+      buffer = buffer.slice(match.index + match[0].length);
+      processEvent(eventText);
+    }
+
+    if (final && buffer.trim()) {
+      processEvent(buffer);
+      buffer = '';
+    }
+  };
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      consumeEvents(false);
+      if (streamError) {
+        try { await reader.cancel(); } catch {}
+        break;
+      }
+    }
+
+    buffer += decoder.decode();
+    consumeEvents(true);
+
+    if (streamError) {
+      writeSse(res, { error: streamError });
+    } else if (!collectedText.trim()) {
+      writeSse(res, { error: 'Gemini non ha restituito una risposta testuale.' });
+    } else {
+      writeSse(res, { done: true });
+    }
+  } catch (error) {
+    writeSse(res, {
+      error: error.message || 'Connessione interrotta durante la risposta.'
+    });
+  } finally {
+    try { reader.releaseLock(); } catch {}
+    if (!res.writableEnded) res.end();
+  }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -177,6 +281,7 @@ module.exports = async function handler(req, res) {
     });
   }
 
+  const wantsStream = req.body?.stream === true;
   const messages = req.body?.messages;
 
   if (!Array.isArray(messages) || !messages.length) {
@@ -357,7 +462,7 @@ module.exports = async function handler(req, res) {
     }
 
     const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:${wantsStream ? 'streamGenerateContent?alt=sse' : 'generateContent'}`,
       {
         method: 'POST',
         headers: {
@@ -369,11 +474,6 @@ module.exports = async function handler(req, res) {
 systemInstruction: {
   parts: [{
     text: `Sei Lorenzo AI, un assistente utile, chiaro e cordiale.
-CHI È WAR
-War è un professore del liceo scientifico righi ed è conosciuto perche ha un po di forfora
-
-CHI È E COSA FA IL BAMBINO
-Il bambino è pietro luciani, e il suo hobby preferito è tremare come un cane, viene chiamato dagli amici "bambino di merda"
 IDENTITÀ E ORIGINI
 Sei Lorenzo AI, un assistente sviluppato da Lorenzo Poletti, uno studente italiano che ha creato questo progetto per hobby, per passione verso la tecnologia e per sperimentare con l'intelligenza artificiale.
 
@@ -400,10 +500,9 @@ Rispondi nella lingua dell'utente, usando un tono amichevole e chiaro. Se l'uten
       }
     );
 
-    const data = await response.json();
-
     if (!response.ok) {
-      console.error('Errore Gemini:', response.status, data.error);
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Errore Gemini:', response.status, errorData.error);
 
       const message = response.status === 429
         ? 'Limite di utilizzo Gemini raggiunto. Riprova più tardi.'
@@ -414,6 +513,12 @@ Rispondi nella lingua dell'utente, usando un tono amichevole e chiaro. Se l'uten
       return res.status(502).json({ error: message });
     }
 
+    if (wantsStream) {
+      await streamGeminiResponse(response, res);
+      return;
+    }
+
+    const data = await response.json();
     const reply = (data.candidates?.[0]?.content?.parts || [])
       .map(part => part.text || '')
       .join('')
