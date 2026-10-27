@@ -161,7 +161,7 @@ async function deleteGeminiFile(apiKey, fileName) {
 
 function writeSse(res, payload) {
   if (!res.writableEnded) {
-    res.write('data: ' + JSON.stringify(payload) + '\\n\\n');
+    res.write('data: ' + JSON.stringify(payload) + '\n\n');
   }
 }
 
@@ -187,10 +187,10 @@ async function streamGeminiResponse(upstream, res) {
 
   const processEvent = eventText => {
     const data = eventText
-      .split(/\\r?\\n/)
+      .split(/\r?\n/)
       .filter(line => line.startsWith('data:'))
       .map(line => line.slice(5).trimStart())
-      .join('\\n');
+      .join('\n');
 
     if (!data || data === '[DONE]') return;
 
@@ -218,7 +218,7 @@ async function streamGeminiResponse(upstream, res) {
 
   const consumeEvents = final => {
     let match;
-    while ((match = /\\r?\\n\\r?\\n/.exec(buffer))) {
+    while ((match = /\r?\n\r?\n/.exec(buffer))) {
       const eventText = buffer.slice(0, match.index);
       buffer = buffer.slice(match.index + match[0].length);
       processEvent(eventText);
@@ -236,7 +236,10 @@ async function streamGeminiResponse(upstream, res) {
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       consumeEvents(false);
-      if (streamError) break;
+      if (streamError) {
+        try { await reader.cancel(); } catch {}
+        break;
+      }
     }
 
     buffer += decoder.decode();
