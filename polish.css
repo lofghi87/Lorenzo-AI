@@ -671,7 +671,7 @@ body.light .usage-count-row strong {
   transition: opacity .15s ease, color .15s ease, background .15s ease, border-color .15s ease;
 }
 .history-row:hover .history-delete,
-.history-row:focus-within .history-delete {
+.history-row:focus-within .history-delete,\n.history-delete:focus-visible {
   opacity: 1;
 }
 .history-delete:hover,
