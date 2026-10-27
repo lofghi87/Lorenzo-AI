@@ -41,7 +41,7 @@ function errorMessage(message, statusCode = 400) {
 function getClientIp(req) {
   const forwarded = String(req.headers['x-forwarded-for'] || '')
     .split(',').map(value => value.trim()).filter(Boolean);
-  return String(req.headers['x-real-ip'] || forwarded[forwarded.length - 1] || 'unknown')
+  return String(forwarded[forwarded.length - 1] || 'unknown')
     .slice(0, 100);
 }
 
