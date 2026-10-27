@@ -26,7 +26,8 @@ module.exports = async function handler(req, res) {
       headers: {
         apikey: SUPABASE_PUBLISHABLE_KEY,
         Authorization: `Bearer ${accessToken}`
-      }
+      },
+      signal: AbortSignal.timeout(10000)
     });
 
     if (!authResponse.ok) {
@@ -59,7 +60,8 @@ module.exports = async function handler(req, res) {
         headers: {
           apikey: serviceKey,
           Authorization: `Bearer ${serviceKey}`
-        }
+        },
+        signal: AbortSignal.timeout(15000)
       }
     );
 
