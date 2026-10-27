@@ -870,6 +870,7 @@ async function generateImage(promptText) {
 
   c.messages.push({ role: 'assistant', content: reply });
   await saveChat(c);
+  if (currentUser) refreshImageUsage();
   busy = false;
   resizeInput();
   renderHistory();
