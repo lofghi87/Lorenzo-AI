@@ -1,4 +1,4 @@
-const DAILY_CHAT_LIMIT = 80;
+const DAILY_CHAT_LIMIT = 40;
 const SUPABASE_URL = 'https://bknkgctmpgiuxvahbbzs.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_rZEaUwMU4CCl7kUPdUlvuw_cuX2n9hB';
 
