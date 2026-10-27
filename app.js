@@ -238,6 +238,10 @@ function canRegenerateResponse(chatId, messageIndex) {
   return true;
 }
 
+function clearStaleRegenerateActions() {
+  messagesEl.querySelectorAll('[data-message-action="regenerate"]').forEach(button => button.remove());
+}
+
 function addMessageActions(bubble, chatId, messageIndex) {
   const wrap = bubble?.closest('.message');
   const chat = chats.find(item => item.id === chatId);
@@ -277,6 +281,7 @@ function addMessageActions(bubble, chatId, messageIndex) {
     regenerateButton.type = 'button';
     regenerateButton.className = 'message-action-btn';
     regenerateButton.setAttribute('aria-label', 'Rigenera risposta');
+    regenerateButton.dataset.messageAction = 'regenerate';
     regenerateButton.title = 'Rigenera risposta';
     regenerateButton.innerHTML = '<span aria-hidden="true">↻</span><span>Rigenera</span>';
     regenerateButton.addEventListener('click', () => regenerateResponse(chatId, messageIndex));
@@ -804,6 +809,7 @@ async function generateImage(promptText) {
   }
 
   const userContent = 'Crea un’immagine: ' + promptText;
+  clearStaleRegenerateActions();
   c.messages.push({ role: 'user', content: userContent });
   welcome.hidden = true;
   addMessage('user', userContent);
@@ -927,8 +933,8 @@ async function regenerateResponse(chatId, messageIndex) {
 
   renderAssistantText(thinking, reply, true);
   chat.messages.push({ role: 'assistant', content: reply });
-  addMessageActions(thinking, chat.id, chat.messages.length - 1);
   await saveChat(chat);
+  addMessageActions(thinking, chat.id, chat.messages.length - 1);
   busy = false;
   resizeInput();
   renderHistory();
@@ -984,6 +990,7 @@ async function sendMessage(text) {
     attachmentNames: attachments.map(file => file.name)
   };
 
+  clearStaleRegenerateActions();
   c.messages.push(userMessage);
   welcome.hidden = true;
   addMessage(
@@ -1084,8 +1091,8 @@ async function sendMessage(text) {
 
   renderAssistantText(thinking, reply, true);
   c.messages.push({ role: 'assistant', content: reply });
-  addMessageActions(thinking, c.id, c.messages.length - 1);
   await saveChat(c);
+  addMessageActions(thinking, c.id, c.messages.length - 1);
   busy = false;
   resizeInput();
   renderHistory();
