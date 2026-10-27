@@ -1,15 +1,31 @@
+const SUPABASE_URL = 'https://bknkgctmpgiuxvahbbzs.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_rZEaUwMU4CCl7kUPdUlvuw_cuX2n9hB';
+const DAILY_IMAGE_LIMIT = 5;
+
+async function refundImageGeneration(userId, serviceKey) {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/rpc/refund_image_generation`, {
+      method: 'POST',
+      headers: {
+        apikey: serviceKey,
+        Authorization: 'Bearer ' + serviceKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ p_user_id: userId })
+    });
+  } catch (error) {
+    console.error('Impossibile restituire il credito immagine:', error.message);
+  }
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
-    return res.status(405).json({
-      error: 'Metodo non consentito.'
-    });
+    return res.status(405).json({ error: 'Metodo non consentito.' });
   }
 
-  // Verifica che l'utente sia autenticato con Supabase.
   const authHeader = req.headers.authorization || '';
   const accessToken = authHeader.startsWith('Bearer ')
     ? authHeader.slice(7)
@@ -22,16 +38,13 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const authResponse = await fetch(
-      'https://bknkgctmpgiuxvahbbzs.supabase.co/auth/v1/user',
-      {
-        method: 'GET',
-        headers: {
-          apikey: 'sb_publishable_rZEaUwMU4CCl7kUPdUlvuw_cuX2n9hB',
-          Authorization: 'Bearer ' + accessToken
-        }
+    const authResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      method: 'GET',
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: 'Bearer ' + accessToken
       }
-    );
+    });
 
     if (!authResponse.ok) {
       return res.status(401).json({
@@ -42,18 +55,22 @@ module.exports = async function handler(req, res) {
     const user = await authResponse.json();
 
     if (!user || !user.id) {
-      return res.status(401).json({
-        error: 'Utente non autenticato.'
-      });
+      return res.status(401).json({ error: 'Utente non autenticato.' });
     }
 
-    // Credenziali Cloudflare salvate nelle variabili di Vercel.
     const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
     const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!accountId || !apiToken) {
       return res.status(503).json({
         error: 'Configurazione Cloudflare incompleta su Vercel.'
+      });
+    }
+
+    if (!serviceKey) {
+      return res.status(503).json({
+        error: 'Manca SUPABASE_SERVICE_ROLE_KEY nelle variabili di Vercel.'
       });
     }
 
@@ -65,55 +82,120 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const response = await fetch(
-      'https://api.cloudflare.com/client/v4/accounts/' +
-        encodeURIComponent(accountId) +
-        '/ai/run/@cf/black-forest-labs/flux-1-schnell',
+    // Prenotazione atomica: impedisce richieste simultanee oltre il limite.
+    const quotaResponse = await fetch(
+      `${SUPABASE_URL}/rest/v1/rpc/consume_image_generation`,
       {
         method: 'POST',
         headers: {
-          Authorization: 'Bearer ' + apiToken,
+          apikey: serviceKey,
+          Authorization: 'Bearer ' + serviceKey,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          prompt,
-          steps: 4
+          p_user_id: user.id,
+          p_daily_limit: DAILY_IMAGE_LIMIT
         })
       }
     );
 
-    const data = await response.json();
-
-    if (!response.ok || data.success === false) {
+    if (!quotaResponse.ok) {
       console.error(
-        'Errore Cloudflare immagini:',
-        response.status,
-        data.errors
+        'Errore controllo quota immagini:',
+        quotaResponse.status,
+        (await quotaResponse.text()).slice(0, 500)
+      );
+      return res.status(503).json({
+        error: 'Impossibile verificare il limite giornaliero. Riprova più tardi.'
+      });
+    }
+
+    const quotaRows = await quotaResponse.json();
+    const quota = Array.isArray(quotaRows) ? quotaRows[0] : quotaRows;
+
+    if (!quota || quota.allowed !== true) {
+      return res.status(429).json({
+        error: `Hai raggiunto il limite di ${DAILY_IMAGE_LIMIT} immagini al giorno. Riprova domani (UTC).`,
+        limit: DAILY_IMAGE_LIMIT,
+        remaining: 0,
+        resetsAt: quota?.resets_at || null
+      });
+    }
+
+    let reservationActive = true;
+    const refundReservation = async () => {
+      if (!reservationActive) return;
+      reservationActive = false;
+      await refundImageGeneration(user.id, serviceKey);
+    };
+
+    try {
+      const response = await fetch(
+        'https://api.cloudflare.com/client/v4/accounts/' +
+          encodeURIComponent(accountId) +
+          '/ai/run/@cf/black-forest-labs/flux-1-schnell',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + apiToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ prompt, steps: 4 })
+        }
       );
 
-      return res.status(502).json({
-        error: 'Errore Cloudflare (' + response.status + '): ' +
-          String(
-            data.errors?.[0]?.message ||
-            'Impossibile generare l’immagine.'
-          ).slice(0, 400)
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        await refundReservation();
+        return res.status(502).json({
+          error: 'Cloudflare ha restituito una risposta non valida.'
+        });
+      }
+
+      if (!response.ok || data.success === false) {
+        console.error(
+          'Errore Cloudflare immagini:',
+          response.status,
+          data.errors
+        );
+
+        // Un errore del provider non consuma il credito giornaliero.
+        await refundReservation();
+
+        return res.status(502).json({
+          error: 'Errore Cloudflare (' + response.status + '): ' +
+            String(
+              data.errors?.[0]?.message ||
+              'Impossibile generare l’immagine.'
+            ).slice(0, 400)
+        });
+      }
+
+      const image = data.result?.image;
+
+      if (!image || typeof image !== 'string') {
+        await refundReservation();
+        return res.status(502).json({
+          error: 'Il servizio non ha restituito un’immagine valida.'
+        });
+      }
+
+      // La richiesta è riuscita: il credito rimane consumato.
+      reservationActive = false;
+
+      return res.status(200).json({
+        image: 'data:image/jpeg;base64,' + image,
+        limit: DAILY_IMAGE_LIMIT,
+        remaining: Math.max(0, Number(quota.remaining ?? 0))
       });
+    } catch (error) {
+      await refundReservation();
+      throw error;
     }
-
-    const image = data.result?.image;
-
-    if (!image || typeof image !== 'string') {
-      return res.status(502).json({
-        error: 'Il servizio non ha restituito un’immagine valida.'
-      });
-    }
-
-    return res.status(200).json({
-      image: 'data:image/jpeg;base64,' + image
-    });
   } catch (error) {
     console.error('Errore generazione immagini:', error.message);
-
     return res.status(502).json({
       error: 'Errore durante la verifica dell’accesso o la generazione.'
     });
