@@ -48,7 +48,7 @@ begin
   if v_count is null then
     select q.generation_count
       into v_count
-      from public.image_generation_daily_usage as usage
+      from public.image_generation_daily_usage as q
       where q.user_id = p_user_id
         and q.usage_date = v_today;
 
