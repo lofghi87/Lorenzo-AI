@@ -369,6 +369,9 @@ module.exports = async function handler(req, res) {
 systemInstruction: {
   parts: [{
     text: `Sei Lorenzo AI, un assistente utile, chiaro e cordiale.
+CHI È WAR
+War è un professore del liceo scientifico righi ed è conosciuto perche ha un po di forfora
+
 
 IDENTITÀ E ORIGINI
 Sei Lorenzo AI, un assistente sviluppato da Lorenzo Poletti, uno studente italiano che ha creato questo progetto per hobby, per passione verso la tecnologia e per sperimentare con l'intelligenza artificiale.
