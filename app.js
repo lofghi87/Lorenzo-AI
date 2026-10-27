@@ -1353,6 +1353,102 @@ async function refreshImageUsage() {
   }
 }
 
+async function refreshChatUsage() {
+  const count = $('#chatUsageCount');
+  const fill = $('#chatUsageFill');
+  const meter = $('#chatUsageMeter');
+  const reset = $('#chatUsageReset');
+  const detail = $('#chatUsageDetail');
+  const refresh = $('#refreshChatUsageBtn');
+  if (!count || !fill || !meter || !reset || !detail) return;
+
+  if (!currentUser) {
+    count.textContent = '—';
+    fill.style.width = '0%';
+    meter.setAttribute('aria-valuenow', '0');
+    detail.textContent = 'Accedi per vedere il contatore del tuo account.';
+    reset.textContent = 'Le chat senza account hanno limiti temporanei più bassi.';
+    return;
+  }
+
+  if (refresh) refresh.disabled = true;
+  detail.textContent = 'Caricamento utilizzo…';
+
+  try {
+    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (sessionError || !accessToken) throw new Error('Sessione scaduta. Accedi nuovamente.');
+
+    const response = await fetch('/api/chat-quota', {
+      headers: { Authorization: 'Bearer ' + accessToken }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Limite chat non disponibile.');
+
+    const limit = Math.max(1, Number(data.limit) || 80);
+    const used = Math.max(0, Math.min(limit, Number(data.used) || 0));
+    const remaining = Math.max(0, Math.min(limit, Number(data.remaining) || 0));
+    count.textContent = remaining + ' di ' + limit;
+    fill.style.width = (used / limit * 100) + '%';
+    meter.setAttribute('aria-valuenow', String(used));
+    meter.setAttribute('aria-valuemax', String(limit));
+    detail.textContent = used + ' ' + (used === 1 ? 'richiesta usata' : 'richieste usate') + ' oggi (UTC).';
+
+    if (data.resetsAt) {
+      reset.textContent = 'Si azzera alle ' + new Date(data.resetsAt).toLocaleTimeString('it-IT', {
+        hour: '2-digit', minute: '2-digit'
+      }) + ' ora locale.';
+    } else {
+      reset.textContent = 'Il limite si azzera ogni giorno.';
+    }
+  } catch (error) {
+    count.textContent = '—';
+    fill.style.width = '0%';
+    meter.setAttribute('aria-valuenow', '0');
+    detail.textContent = error.message || 'Impossibile caricare il limite chat.';
+    reset.textContent = 'Se il problema continua, controlla la migration Supabase inclusa nel progetto.';
+  } finally {
+    if (refresh) refresh.disabled = false;
+  }
+}
+
+async function deleteAccount() {
+  if (!currentUser || busy) return;
+  const accepted = window.confirm(
+    'Vuoi eliminare definitivamente il tuo account Lorenzo AI? Verranno rimossi le conversazioni cloud e i file associati. Questa azione non può essere annullata.'
+  );
+  if (!accepted) return;
+
+  const button = $('#deleteAccountBtn');
+  if (button) button.disabled = true;
+
+  try {
+    const { data, error } = await supabaseClient.auth.getSession();
+    const accessToken = data?.session?.access_token;
+    if (error || !accessToken) throw new Error('Sessione scaduta. Accedi nuovamente.');
+
+    const response = await fetch('/api/delete-account', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + accessToken }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Eliminazione account non riuscita.');
+
+    try { localStorage.removeItem(STORE_KEY); } catch {}
+    chats = [];
+    activeId = null;
+    await supabaseClient.auth.signOut();
+    window.location.replace('/login.html?accountDeleted=1');
+  } catch (error) {
+    showToast(error.message || 'Non sono riuscito a eliminare l’account.');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+$('#deleteAccountBtn')?.addEventListener('click', deleteAccount);
+$('#refreshChatUsageBtn')?.addEventListener('click', refreshChatUsage);
+
 $('#settingsBtn').onclick = async () => {
   const { data, error } = await supabaseClient.auth.getSession();
   if (error) showToast('Impossibile controllare la sessione.');
@@ -1363,7 +1459,10 @@ $('#settingsBtn').onclick = async () => {
     : 'Le chat senza account sono salvate solo su questo dispositivo.';
   $('#settingsTag').textContent = session ? 'Connessa' : 'Locale';
   $('#settingsDialog').showModal();
+  $('#deleteAccountBtn').hidden = !session;
+  $('#deleteAccountBtn').disabled = false;
   refreshImageUsage();
+  refreshChatUsage();
 };
 
 $('#refreshUsageBtn')?.addEventListener('click', refreshImageUsage);
