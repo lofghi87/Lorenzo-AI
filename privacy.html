@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101014">
+  <meta name="description" content="Informazioni sulla gestione dei dati in Lorenzo AI.">
+  <title>Privacy — Lorenzo AI</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/polish.css">
+  <style>
+    .legal-page{width:min(820px,100%);margin:0 auto;padding:34px 22px 56px}
+    .legal-nav{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:36px}
+    .legal-nav a,.legal-page a{color:var(--accent);text-underline-offset:3px}
+    .legal-brand{font-weight:800;font-family:Manrope,sans-serif;color:var(--text);text-decoration:none!important}
+    .legal-eyebrow{font-size:11px;letter-spacing:1.8px;color:var(--accent);font-weight:700;text-transform:uppercase}
+    .legal-page h1{font-family:Manrope,sans-serif;font-size:clamp(32px,6vw,46px);line-height:1.1;letter-spacing:-1.5px;margin:10px 0}
+    .legal-date{font-size:12px;color:var(--muted);margin-bottom:28px}
+    .legal-page h2{font-family:Manrope,sans-serif;font-size:19px;margin:28px 0 9px}
+    .legal-page p,.legal-page li{font-size:14px;line-height:1.8;color:var(--text)}
+    .legal-page li{margin:6px 0}
+    .legal-note{border:1px solid var(--line);border-radius:14px;padding:15px 17px;background:var(--panel);margin:22px 0}
+    .legal-note p{margin:0}
+    .legal-footer{display:flex;gap:14px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:18px;margin-top:34px;font-size:12px}
+  </style>
+</head>
+<body>
+  <main class="legal-page">
+    <nav class="legal-nav" aria-label="Navigazione">
+      <a class="legal-brand" href="/">Lorenzo AI</a>
+      <span><a href="/terms.html">Termini</a> · <a href="/">Torna alla chat</a></span>
+    </nav>
+    <p class="legal-eyebrow">Informazioni sul servizio</p>
+    <h1>Informativa privacy</h1>
+    <p class="legal-date">Versione preliminare · aggiornata il 27 ottobre 2026</p>
+
+    <div class="legal-note">
+      <p><strong>Nota:</strong> questa informativa è una bozza iniziale del progetto. Prima di aprire Lorenzo AI a un pubblico ampio, il responsabile del progetto deve completare i dati di contatto e verificare le informazioni legali applicabili con una persona adulta competente o un professionista.</p>
+    </div>
+
+    <h2>1. Quali dati vengono trattati</h2>
+    <p>Il servizio può trattare l’indirizzo email usato per registrarti, i messaggi che invii, le risposte generate, i nomi dei file allegati, gli allegati necessari all’analisi e i dati tecnici minimi necessari a proteggere e gestire il servizio.</p>
+
+    <h2>2. Dove vengono conservate le conversazioni</h2>
+    <p>Se usi Lorenzo AI senza accedere, le conversazioni vengono salvate nel browser del dispositivo tramite memoria locale. Se accedi a un account, le conversazioni vengono salvate nel database del progetto su Supabase, per permetterti di ritrovarle in seguito. Le impostazioni del tema vengono salvate nel browser.</p>
+    <p>Le conversazioni possono essere eliminate dalla cronologia. Le conversazioni online e i file associati possono anche essere rimossi usando “Elimina account e dati” nelle impostazioni. Se compare un errore durante una cancellazione, non presumere che ogni dato sia stato eliminato: riprova e verifica il risultato.</p>
+
+    <h2>3. Servizi esterni utilizzati</h2>
+    <ul>
+      <li><strong>Supabase:</strong> autenticazione, database delle conversazioni e archiviazione temporanea o privata dei file.</li>
+      <li><strong>Google Gemini:</strong> i messaggi e gli allegati necessari vengono inviati al modello per produrre le risposte o analizzare i contenuti. Il server tenta di eliminare i file temporanei caricati per l’elaborazione al termine della richiesta.</li>
+      <li><strong>Cloudflare Workers AI:</strong> riceve la descrizione dell’immagine quando chiedi di generarla e restituisce il risultato.</li>
+      <li><strong>CDN e servizi di font:</strong> alcune librerie e risorse grafiche sono caricate da servizi esterni, che possono ricevere i normali dati tecnici della richiesta.</li>
+    </ul>
+    <p>Questi fornitori trattano i dati secondo le proprie condizioni e informative. Prima del lancio pubblico è necessario verificare le condizioni vigenti, i luoghi di trattamento e le opzioni di conservazione dei singoli fornitori.</p>
+
+    <h2>4. Come usare il servizio con attenzione</h2>
+    <p>Non inviare password, chiavi API, credenziali bancarie, documenti d’identità, dati sanitari o altri dati altamente sensibili. Non caricare file contenenti dati personali di altre persone senza averne il diritto. Le risposte generate possono essere inesatte e non sostituiscono una valutazione professionale.</p>
+
+    <h2>5. Sicurezza e conservazione</h2>
+    <p>Lorenzo AI applica controlli tecnici per limitare gli abusi e proteggere gli account, ma nessun servizio online può garantire sicurezza assoluta. I file caricati per una richiesta sono trattati dal server e il sistema ne tenta la rimozione al termine dell’elaborazione; un errore del fornitore può impedire la cancellazione automatica. Le conversazioni salvate rimangono disponibili finché non vengono eliminate o finché non cambiano le impostazioni del servizio.</p>
+
+    <h2>6. Contatti e richieste sui dati</h2>
+    <p>Prima della pubblicazione pubblica deve essere aggiunto qui un canale di contatto dedicato del responsabile del progetto, per domande, richieste di accesso o cancellazione e segnalazioni relative alla privacy. Non pubblicare un indirizzo personale: usa un recapito dedicato e adatto a un servizio pubblico.</p>
+
+    <div class="legal-footer">
+      <a href="/">Torna a Lorenzo AI</a>
+      <a href="/terms.html">Termini di utilizzo</a>
+    </div>
+  </main>
+</body>
+</html>
