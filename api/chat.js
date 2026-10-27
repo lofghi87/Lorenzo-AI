@@ -6,7 +6,7 @@ const DAILY_CHAT_LIMIT = 80;
 const RATE_WINDOW_MS = 15 * 60 * 1000;
 const memoryRateLimits = new Map();
 const MEMORY_LIMITS = {
-  authenticated: { window: 12, daily: 40 },
+  authenticated: { window: 12, daily: 80 },
   anonymous: { window: 5, daily: 12 }
 };
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
