@@ -1,3 +1,4 @@
+const { createHash } = require('crypto');
 
 const MAX_MESSAGES = 40;
 const MAX_TEXT_LENGTH = 12000;
@@ -92,9 +93,14 @@ function consumeMemoryRateLimit(key, authenticated) {
 }
 
 async function consumeChatQuota(userId, serviceKey, req) {
-  const clientKey = userId ? 'user:' + userId : 'ip:' + getClientIp(req);
+  const clientKey = userId
+    ? userId
+    : 'anon:' + createHash('sha256').update(getClientIp(req)).digest('hex');
+  const dailyLimit = userId ? DAILY_CHAT_LIMIT : MEMORY_LIMITS.anonymous.daily;
 
-  if (userId && serviceKey) {
+  // La quota persistente vale anche per gli ospiti: l'IP viene hashato prima
+  // di arrivare al database, così non conserviamo l'indirizzo in chiaro.
+  if (serviceKey) {
     const response = await fetch(
       `${SUPABASE_URL}/rest/v1/rpc/consume_ai_chat_request`,
       {
@@ -105,9 +111,10 @@ async function consumeChatQuota(userId, serviceKey, req) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          p_user_id: userId,
-          p_daily_limit: DAILY_CHAT_LIMIT
-        })
+          p_client_key: clientKey,
+          p_daily_limit: dailyLimit
+        }),
+        signal: AbortSignal.timeout(15000)
       }
     );
 
@@ -127,21 +134,20 @@ async function consumeChatQuota(userId, serviceKey, req) {
         };
       }
 
-      // Oltre alla quota giornaliera persistente applica una finestra breve
-      // per ridurre abusi e loop di richieste ravvicinate.
-      const shortWindow = consumeMemoryRateLimit(clientKey, true);
+      // Evita raffiche rapide anche quando la quota giornaliera è persistente.
+      const shortWindow = consumeMemoryRateLimit(clientKey, Boolean(userId));
       if (!shortWindow.allowed) return shortWindow;
+
       return {
         allowed: true,
-        remaining: Math.max(0, Number(row.remaining ?? DAILY_CHAT_LIMIT - 1)),
+        remaining: Math.max(0, Number(row.remaining ?? dailyLimit - 1)),
         resetsAt: row.resets_at || null,
         retryAfter: 0
       };
     }
 
-    // Se la migration non è ancora stata applicata, il sito resta usabile con
-    // un limite temporaneo per istanza. Gli errori DB diversi da schema assente
-    // invece bloccano la richiesta per evitare di aggirare la quota.
+    // Durante la configurazione, una migration ancora assente usa il limite
+    // temporaneo per istanza; gli errori di servizio invece bloccano la richiesta.
     if (response.status !== 404 && response.status !== 400) {
       console.error('Controllo quota chat non riuscito:', response.status);
       throw errorMessage('Non riesco a verificare il limite della chat. Riprova più tardi.', 503);
@@ -151,7 +157,6 @@ async function consumeChatQuota(userId, serviceKey, req) {
 
   return consumeMemoryRateLimit(clientKey, Boolean(userId));
 }
-
 async function uploadToGemini(apiKey, buffer, mimeType, name) {
   const start = await fetch(
     `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`,
