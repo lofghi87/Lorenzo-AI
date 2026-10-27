@@ -927,7 +927,7 @@ async function regenerateResponse(chatId, messageIndex) {
     $('#connectionStatus').textContent = 'AI collegata';
   } catch (error) {
     console.error('Errore rigenerazione risposta:', error);
-    reply = 'Non sono riuscito a rigenerare la risposta.\\n\\n' +
+    reply = 'Non sono riuscito a rigenerare la risposta.\n\n' +
       (error.message || 'Riprova tra poco.');
   }
 
