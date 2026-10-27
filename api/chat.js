@@ -272,10 +272,33 @@ async function deleteGeminiFile(apiKey, fileName) {
   try {
     await fetch(
       `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${encodeURIComponent(apiKey)}`,
-      { method: 'DELETE' }
+      { method: 'DELETE', signal: AbortSignal.timeout(15000) }
     );
   } catch (error) {
     console.error('Pulizia file Gemini non riuscita:', error.message);
+  }
+}
+
+async function deleteTemporaryStorageFile(path, serviceKey) {
+  if (!serviceKey || typeof path !== 'string') return;
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${encodedPath}`,
+      {
+        method: 'DELETE',
+        headers: {
+          apikey: serviceKey,
+          Authorization: 'Bearer ' + serviceKey
+        },
+        signal: AbortSignal.timeout(15000)
+      }
+    );
+    if (!response.ok && response.status !== 404) {
+      console.error('Rimozione allegato temporaneo non riuscita:', response.status);
+    }
+  } catch (error) {
+    console.error('Rimozione allegato temporaneo non riuscita:', error.message);
   }
 }
 
@@ -441,6 +464,7 @@ module.exports = async function handler(req, res) {
   ).replace(/^Bearer\s+/i, '');
 
   const uploadedGeminiFiles = [];
+  const temporaryStoragePaths = [];
 
   try {
     const hasStorageAttachments = messages.some(message =>
@@ -546,6 +570,7 @@ module.exports = async function handler(req, res) {
             userId,
             serviceKey
           );
+          temporaryStoragePaths.push(file.path);
 
           totalBytes += buffer.length;
 
@@ -692,10 +717,9 @@ Rispondi nella lingua dell'utente, usando un tono amichevole e chiaro. Distingui
       error: error.message || 'Si è verificato un errore durante la richiesta.'
     });
   } finally {
-    await Promise.all(
-      uploadedGeminiFiles.map(fileName =>
-        deleteGeminiFile(apiKey, fileName)
-      )
-    );
+    await Promise.all([
+      ...uploadedGeminiFiles.map(fileName => deleteGeminiFile(apiKey, fileName)),
+      ...temporaryStoragePaths.map(path => deleteTemporaryStorageFile(path, serviceKey))
+    ]);
   }
 };
