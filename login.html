@@ -352,6 +352,10 @@
       }
     });
 
+    if (new URLSearchParams(window.location.search).get('accountDeleted') === '1') {
+      message('Account eliminato. Tutti i dati rimossi dal servizio sono stati cancellati.');
+    }
+
     updatePage();
   </script>
 </body>
