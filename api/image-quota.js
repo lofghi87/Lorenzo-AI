@@ -11,7 +11,7 @@ module.exports = async function handler(req, res) {
   }
 
   const accessToken = String(req.headers.authorization || '')
-    .replace(/^Bearer\\s+/i, '');
+    .replace(/^Bearer\s+/i, '');
   if (!accessToken) {
     return res.status(401).json({ error: 'Accedi per vedere il tuo utilizzo.' });
   }
