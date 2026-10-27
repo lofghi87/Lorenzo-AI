@@ -123,8 +123,11 @@ function openChat(chatId) {
 
   activeId = chatId;
   messagesEl.replaceChildren();
-  c.messages.forEach(m => {
-    addMessage(m.role, m.content, false, m.attachmentNames);
+  c.messages.forEach((m, index) => {
+    const bubble = addMessage(m.role, m.content, false, m.attachmentNames);
+    if (m.role === 'assistant' && String(m.content || '').trim()) {
+      addMessageActions(bubble, c.id, index);
+    }
   });
 
   welcome.hidden = c.messages.length > 0;
@@ -135,7 +138,7 @@ function openChat(chatId) {
   scrollBottom();
 }
 
-function renderMarkdown(el, text) {
+function renderMarkdown(el, text, renderMath = true) {
   if (!window.marked || !window.DOMPurify) {
     el.textContent = text;
     return;
@@ -147,7 +150,7 @@ function renderMarkdown(el, text) {
   );
 
   // Renderizza formule matematiche con fallback se KaTeX non è disponibile.
-  if (typeof window.renderMathInElement === 'function') {
+  if (renderMath && typeof window.renderMathInElement === 'function') {
     try {
       window.renderMathInElement(el, {
         delimiters: [
@@ -210,6 +213,182 @@ function addMessage(role, content, scroll = true, attachmentNames = []) {
   messagesEl.append(wrap);
   if (scroll) scrollBottom();
   return bubble;
+}
+
+function canRegenerateResponse(chatId, messageIndex) {
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat || messageIndex !== chat.messages.length - 1) return false;
+
+  const response = chat.messages[messageIndex];
+  const request = chat.messages[messageIndex - 1];
+
+  if (!response || response.role !== 'assistant' || !request || request.role !== 'user') {
+    return false;
+  }
+
+  if (Array.isArray(request.attachmentNames) && request.attachmentNames.length) {
+    return false;
+  }
+
+  if (String(request.content || '').startsWith('Crea un’immagine:') ||
+      String(response.content || '').startsWith('Immagine generata per:')) {
+    return false;
+  }
+
+  return true;
+}
+
+function addMessageActions(bubble, chatId, messageIndex) {
+  const wrap = bubble?.closest('.message');
+  const chat = chats.find(item => item.id === chatId);
+  const message = chat?.messages?.[messageIndex];
+
+  if (!wrap || wrap.querySelector('.message-actions') ||
+      wrap.classList.contains('user') || !message) return;
+
+  const actions = document.createElement('div');
+  actions.className = 'message-actions';
+
+  const copyButton = document.createElement('button');
+  copyButton.type = 'button';
+  copyButton.className = 'message-action-btn';
+  copyButton.setAttribute('aria-label', 'Copia risposta');
+  copyButton.title = 'Copia risposta';
+  copyButton.innerHTML = '<span aria-hidden="true">⧉</span><span>Copia</span>';
+  copyButton.addEventListener('click', async () => {
+    try {
+      await copyText(message.content || '');
+      copyButton.classList.add('copied');
+      copyButton.innerHTML = '<span aria-hidden="true">✓</span><span>Copiato</span>';
+      showToast('Risposta copiata.');
+      setTimeout(() => {
+        if (!copyButton.isConnected) return;
+        copyButton.classList.remove('copied');
+        copyButton.innerHTML = '<span aria-hidden="true">⧉</span><span>Copia</span>';
+      }, 1600);
+    } catch {
+      showToast('Non riesco a copiare il testo. Selezionalo e copia manualmente.');
+    }
+  });
+  actions.append(copyButton);
+
+  if (canRegenerateResponse(chatId, messageIndex)) {
+    const regenerateButton = document.createElement('button');
+    regenerateButton.type = 'button';
+    regenerateButton.className = 'message-action-btn';
+    regenerateButton.setAttribute('aria-label', 'Rigenera risposta');
+    regenerateButton.title = 'Rigenera risposta';
+    regenerateButton.innerHTML = '<span aria-hidden="true">↻</span><span>Rigenera</span>';
+    regenerateButton.addEventListener('click', () => regenerateResponse(chatId, messageIndex));
+    actions.append(regenerateButton);
+  }
+
+  wrap.append(actions);
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    await navigator.clipboard.writeText(String(text || ''));
+    return;
+  }
+
+  const field = document.createElement('textarea');
+  field.value = String(text || '');
+  field.setAttribute('readonly', '');
+  field.style.position = 'fixed';
+  field.style.opacity = '0';
+  field.style.pointerEvents = 'none';
+  document.body.append(field);
+  field.select();
+  const copied = document.execCommand('copy');
+  field.remove();
+  if (!copied) throw new Error('Copia non riuscita.');
+}
+
+async function readStreamingReply(response, onUpdate) {
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Errore del servizio AI.');
+  }
+
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  if (!contentType.includes('text/event-stream')) {
+    const data = await response.json().catch(() => ({}));
+    if (data.error) throw new Error(data.error);
+    const fallback = String(data.reply || '').trim();
+    if (!fallback) throw new Error('Non è arrivata una risposta.');
+    onUpdate?.(fallback);
+    return fallback;
+  }
+
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    throw new Error('Questo browser non supporta la risposta in tempo reale.');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let answer = '';
+  let streamError = '';
+
+  const processEvent = eventText => {
+    const dataText = eventText
+      .split(/\\r?\\n/)
+      .filter(line => line.startsWith('data:'))
+      .map(line => line.slice(5).trimStart())
+      .join('\\n');
+
+    if (!dataText || dataText === '[DONE]') return;
+
+    let payload;
+    try {
+      payload = JSON.parse(dataText);
+    } catch {
+      return;
+    }
+
+    if (payload.error) {
+      streamError = String(payload.error);
+      return;
+    }
+
+    if (typeof payload.text === 'string' && payload.text) {
+      answer += payload.text;
+      onUpdate?.(answer);
+    }
+  };
+
+  const consumeEvents = final => {
+    let match;
+    while ((match = /\\r?\\n\\r?\\n/.exec(buffer))) {
+      const eventText = buffer.slice(0, match.index);
+      buffer = buffer.slice(match.index + match[0].length);
+      processEvent(eventText);
+    }
+    if (final && buffer.trim()) {
+      processEvent(buffer);
+      buffer = '';
+    }
+  };
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      consumeEvents(false);
+      if (streamError) break;
+    }
+    buffer += decoder.decode();
+    consumeEvents(true);
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+
+  if (streamError && !answer.trim()) throw new Error(streamError);
+  if (streamError && answer.trim()) answer += '\\n\\n' + streamError;
+  if (!answer.trim()) throw new Error('Gemini non ha restituito una risposta testuale.');
+  return answer.trim();
 }
 
 function scrollBottom() {
@@ -694,6 +873,64 @@ async function generateImage(promptText) {
   scrollBottom();
 }
 
+async function regenerateResponse(chatId, messageIndex) {
+  if (busy || !authReady) return;
+
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat || !canRegenerateResponse(chatId, messageIndex)) {
+    showToast('Puoi rigenerare solo l’ultima risposta senza allegati.');
+    return;
+  }
+
+  // La rigenerazione sostituisce l’ultima risposta senza duplicare la domanda.
+  chat.messages.pop();
+  if (activeId !== chatId) activeId = chatId;
+  openChat(chatId);
+  welcome.hidden = false;
+  busy = true;
+  resizeInput();
+
+  const thinking = addMessage('assistant', '', false);
+  setThinkingState(thinking, 'Sto preparando una nuova risposta');
+  scrollBottom();
+
+  let reply = '';
+  try {
+    const apiMessages = chat.messages.slice(-40).map(message => ({
+      role: message.role,
+      content: message.content || ''
+    }));
+
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: apiMessages, stream: true })
+    });
+
+    reply = await readStreamingReply(response, partial => {
+      const area = $('#chatArea');
+      const keepAtBottom = area &&
+        area.scrollHeight - area.scrollTop - area.clientHeight < 140;
+      renderMarkdown(thinking, partial, false);
+      if (keepAtBottom) scrollBottom();
+    });
+    $('#connectionStatus').textContent = 'AI collegata';
+  } catch (error) {
+    console.error('Errore rigenerazione risposta:', error);
+    reply = 'Non sono riuscito a rigenerare la risposta.\\n\\n' +
+      (error.message || 'Riprova tra poco.');
+  }
+
+  renderAssistantText(thinking, reply, true);
+  chat.messages.push({ role: 'assistant', content: reply });
+  addMessageActions(thinking, chat.id, chat.messages.length - 1);
+  await saveChat(chat);
+  busy = false;
+  resizeInput();
+  renderHistory();
+  scrollBottom();
+}
+
 async function sendMessage(text) {
   text = String(text || '').trim();
 
@@ -823,19 +1060,16 @@ async function sendMessage(text) {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ messages: apiMessages })
+      body: JSON.stringify({ messages: apiMessages, stream: true })
     });
 
-    let data;
-    try {
-      data = await res.json();
-    } catch {
-      throw new Error('Il server ha restituito una risposta non valida.');
-    }
-
-    if (!res.ok) throw new Error(data.error || 'Errore del servizio AI.');
-
-    reply = data.reply || 'Non è arrivata una risposta.';
+    reply = await readStreamingReply(res, partial => {
+      const area = $('#chatArea');
+      const keepAtBottom = area &&
+        area.scrollHeight - area.scrollTop - area.clientHeight < 140;
+      renderMarkdown(thinking, partial, false);
+      if (keepAtBottom) scrollBottom();
+    });
     $('#connectionStatus').textContent = 'AI collegata';
   } catch (error) {
     console.error('Errore invio messaggio:', error);
@@ -846,6 +1080,7 @@ async function sendMessage(text) {
 
   renderAssistantText(thinking, reply, true);
   c.messages.push({ role: 'assistant', content: reply });
+  addMessageActions(thinking, c.id, c.messages.length - 1);
   await saveChat(c);
   busy = false;
   resizeInput();
@@ -918,6 +1153,70 @@ document.querySelectorAll('.suggestion').forEach(button => {
   button.addEventListener('click', () => sendMessage(button.dataset.prompt));
 });
 
+async function refreshImageUsage() {
+  const count = $('#imageUsageCount');
+  const fill = $('#imageUsageFill');
+  const meter = $('#imageUsageMeter');
+  const reset = $('#imageUsageReset');
+  const detail = $('#imageUsageDetail');
+  const refresh = $('#refreshUsageBtn');
+  if (!count || !fill || !meter || !reset || !detail) return;
+
+  if (!currentUser) {
+    count.textContent = '—';
+    fill.style.width = '0%';
+    meter.setAttribute('aria-valuenow', '0');
+    detail.textContent = 'Accedi al tuo account per visualizzare il limite giornaliero.';
+    reset.textContent = 'Il limite è collegato al tuo account.';
+    return;
+  }
+
+  if (refresh) refresh.disabled = true;
+  detail.textContent = 'Caricamento utilizzo…';
+
+  try {
+    const { data: sessionData, error: sessionError } =
+      await supabaseClient.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (sessionError || !accessToken) {
+      throw new Error('Sessione scaduta. Accedi nuovamente.');
+    }
+
+    const response = await fetch('/api/image-quota', {
+      headers: { Authorization: 'Bearer ' + accessToken }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Limite non disponibile.');
+
+    const limit = Math.max(1, Number(data.limit) || 5);
+    const used = Math.max(0, Math.min(limit, Number(data.used) || 0));
+    const remaining = Math.max(0, Math.min(limit, Number(data.remaining)));
+
+    count.textContent = remaining + ' di ' + limit;
+    fill.style.width = (used / limit * 100) + '%';
+    meter.setAttribute('aria-valuenow', String(used));
+    meter.setAttribute('aria-valuemax', String(limit));
+    detail.textContent = used + ' ' + (used === 1 ? 'immagine generata' : 'immagini generate') +
+      ' oggi (UTC).';
+    if (data.resetsAt) {
+      const time = new Date(data.resetsAt);
+      reset.textContent = 'Si azzera alle ' + time.toLocaleTimeString('it-IT', {
+        hour: '2-digit', minute: '2-digit'
+      }) + ' ora locale.';
+    } else {
+      reset.textContent = 'Il limite si azzera ogni giorno.';
+    }
+  } catch (error) {
+    count.textContent = '—';
+    fill.style.width = '0%';
+    meter.setAttribute('aria-valuenow', '0');
+    detail.textContent = error.message || 'Impossibile caricare l’utilizzo.';
+    reset.textContent = 'Riprova con il pulsante Aggiorna.';
+  } finally {
+    if (refresh) refresh.disabled = false;
+  }
+}
+
 $('#settingsBtn').onclick = async () => {
   const { data, error } = await supabaseClient.auth.getSession();
   if (error) showToast('Impossibile controllare la sessione.');
@@ -928,9 +1227,12 @@ $('#settingsBtn').onclick = async () => {
     : 'Le chat senza account sono salvate solo su questo dispositivo.';
   $('#settingsTag').textContent = session ? 'Connessa' : 'Locale';
   $('#settingsDialog').showModal();
+  refreshImageUsage();
 };
 
-$('#themeBtn').onclick = () => {
+$('#refreshUsageBtn')?.addEventListener('click', refreshImageUsage);
+
+function toggleTheme() {
   document.body.classList.toggle('light');
   try {
     localStorage.setItem(
@@ -938,13 +1240,25 @@ $('#themeBtn').onclick = () => {
       document.body.classList.contains('light') ? 'light' : 'dark'
     );
   } catch {}
-};
+  const themeStatus = $('#settingsThemeStatus');
+  const themeSettingBtn = $('#settingsThemeBtn');
+  if (themeStatus) themeStatus.textContent = document.body.classList.contains('light') ? 'Tema chiaro attivo' : 'Tema scuro attivo';
+  if (themeSettingBtn) themeSettingBtn.textContent = document.body.classList.contains('light') ? 'Usa tema scuro' : 'Usa tema chiaro';
+}
+
+$('#themeBtn').onclick = toggleTheme;
+$('#settingsThemeBtn')?.addEventListener('click', toggleTheme);
 
 try {
   if (localStorage.getItem('lorenzo-ai-theme') === 'light') {
     document.body.classList.add('light');
   }
 } catch {}
+
+const themeStatus = $('#settingsThemeStatus');
+const themeSettingBtn = $('#settingsThemeBtn');
+if (themeStatus) themeStatus.textContent = document.body.classList.contains('light') ? 'Tema chiaro attivo' : 'Tema scuro attivo';
+if (themeSettingBtn) themeSettingBtn.textContent = document.body.classList.contains('light') ? 'Usa tema scuro' : 'Usa tema chiaro';
 
 setupAccountButton();
 
