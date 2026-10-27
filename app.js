@@ -333,10 +333,10 @@ async function readStreamingReply(response, onUpdate) {
 
   const processEvent = eventText => {
     const dataText = eventText
-      .split(/\\r?\\n/)
+      .split(/\r?\n/)
       .filter(line => line.startsWith('data:'))
       .map(line => line.slice(5).trimStart())
-      .join('\\n');
+      .join('\n');
 
     if (!dataText || dataText === '[DONE]') return;
 
@@ -360,7 +360,7 @@ async function readStreamingReply(response, onUpdate) {
 
   const consumeEvents = final => {
     let match;
-    while ((match = /\\r?\\n\\r?\\n/.exec(buffer))) {
+    while ((match = /\r?\n\r?\n/.exec(buffer))) {
       const eventText = buffer.slice(0, match.index);
       buffer = buffer.slice(match.index + match[0].length);
       processEvent(eventText);
@@ -377,7 +377,10 @@ async function readStreamingReply(response, onUpdate) {
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       consumeEvents(false);
-      if (streamError) break;
+      if (streamError) {
+        try { await reader.cancel(); } catch {}
+        break;
+      }
     }
     buffer += decoder.decode();
     consumeEvents(true);
@@ -386,7 +389,7 @@ async function readStreamingReply(response, onUpdate) {
   }
 
   if (streamError && !answer.trim()) throw new Error(streamError);
-  if (streamError && answer.trim()) answer += '\\n\\n' + streamError;
+  if (streamError && answer.trim()) answer += '\n\n' + streamError;
   if (!answer.trim()) throw new Error('Gemini non ha restituito una risposta testuale.');
   return answer.trim();
 }
