@@ -78,15 +78,72 @@ function renderHistory() {
   h.replaceChildren();
 
   chats.slice().reverse().forEach(c => {
+    const row = document.createElement('div');
+    row.className = 'history-row';
+
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'history-item' + (c.id === activeId ? ' active' : '');
     b.textContent = '◷ ' + (c.title || 'Nuova conversazione');
     b.title = c.title || '';
     b.onclick = () => openChat(c.id);
-    h.append(b);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'history-delete';
+    remove.textContent = '×';
+    remove.title = 'Elimina conversazione';
+    remove.setAttribute('aria-label', 'Elimina conversazione: ' + (c.title || 'Nuova conversazione'));
+    remove.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteChat(c.id);
+    };
+
+    row.append(b, remove);
+    h.append(row);
   });
 }
 
+async function deleteChat(chatId) {
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat || busy) return;
+  const title = chat.title || 'questa conversazione';
+  if (!window.confirm('Eliminare "' + title + '"? Questa azione non può essere annullata.')) return;
+
+  if (currentUser && chat.dbId) {
+    const imagePaths = chat.messages
+      .map(message => message?.imagePath)
+      .filter(path => typeof path === 'string' && path.startsWith(currentUser.id + '/'));
+
+    if (imagePaths.length) {
+      const { error: storageError } = await supabaseClient.storage.from(BUCKET).remove(imagePaths);
+      if (storageError) {
+        showToast('La chat verrà eliminata, ma alcune immagini potrebbero restare nello spazio file.');
+      }
+    }
+
+    const { error } = await supabaseClient.from('chats').delete()
+      .eq('id', chat.dbId)
+      .eq('user_id', currentUser.id);
+    if (error) {
+      console.error('Errore eliminazione chat:', error);
+      showToast('Non sono riuscito a eliminare la conversazione.');
+      return;
+    }
+  }
+
+  chats = chats.filter(item => item.id !== chatId);
+  if (!currentUser) saveLocalChats();
+
+  if (activeId === chatId) {
+    if (chats.length) openChat(chats[chats.length - 1].id);
+    else newChat();
+  } else {
+    renderHistory();
+  }
+  showToast('Conversazione eliminata.');
+}
 function resetImageMode() {
   imageMode = false;
   if (imageModeBtn) {
@@ -127,6 +184,9 @@ function openChat(chatId) {
     const bubble = addMessage(m.role, m.content, false, m.attachmentNames);
     if (m.role === 'assistant' && String(m.content || '').trim()) {
       addMessageActions(bubble, c.id, index);
+    }
+    if (m.role === 'assistant' && typeof m.imagePath === 'string') {
+      void renderSavedGeneratedImage(bubble, m.imagePath, m.content);
     }
   });
 
@@ -495,6 +555,9 @@ async function saveChat(chat) {
     content: m.content || '',
     ...(Array.isArray(m.attachmentNames)
       ? { attachmentNames: m.attachmentNames }
+      : {}),
+    ...(typeof m.imagePath === 'string'
+      ? { imagePath: m.imagePath }
       : {})
   }));
 
@@ -752,6 +815,50 @@ async function uploadAttachmentToStorage(file) {
   return { name: file.name, size: file.size, mimeType: file.type, path };
 }
 
+async function saveGeneratedImage(imageData) {
+  if (!currentUser || typeof imageData !== 'string' || !imageData.startsWith('data:image/')) {
+    return null;
+  }
+
+  const response = await fetch(imageData);
+  if (!response.ok) throw new Error('Impossibile preparare il file immagine.');
+  const blob = await response.blob();
+  const path = currentUser.id + '/generated-' + id() + '.jpg';
+
+  const { error } = await supabaseClient.storage.from(BUCKET).upload(path, blob, {
+    contentType: blob.type || 'image/jpeg',
+    upsert: false
+  });
+  if (error) throw error;
+  return path;
+}
+
+async function renderSavedGeneratedImage(bubble, path, promptText) {
+  if (!bubble || !currentUser || !path.startsWith(currentUser.id + '/')) return;
+
+  const { data, error } = await supabaseClient.storage.from(BUCKET).createSignedUrl(path, 300);
+  if (error || !data?.signedUrl) {
+    showToast('Non riesco a caricare un’immagine salvata.');
+    return;
+  }
+
+  const img = document.createElement('img');
+  img.src = data.signedUrl;
+  img.alt = String(promptText || 'Immagine generata da Lorenzo AI').slice(0, 500);
+  img.loading = 'lazy';
+  img.decoding = 'async';
+  img.style.cssText = 'display:block;width:100%;max-width:512px;height:auto;border-radius:14px;margin-top:8px';
+  bubble.append(img);
+
+  const open = document.createElement('a');
+  open.href = data.signedUrl;
+  open.target = '_blank';
+  open.rel = 'noopener noreferrer';
+  open.textContent = 'Apri immagine';
+  open.style.cssText = 'display:inline-block;margin-top:10px';
+  bubble.append(open);
+}
+
 /* Visualizzazione dell'immagine generata. */
 function addGeneratedImage(imageData, promptText) {
   const wrap = document.createElement('div');
@@ -865,6 +972,12 @@ async function generateImage(promptText) {
 
     status.remove();
     addGeneratedImage(data.image, promptText);
+    try {
+      generatedImagePath = await saveGeneratedImage(data.image);
+    } catch (storageError) {
+      console.error('Immagine generata ma non salvata in cronologia:', storageError);
+      showToast('Immagine creata, ma non sarà disponibile nella cronologia.');
+    }
     reply = 'Immagine generata per: ' + promptText;
     $('#connectionStatus').textContent = 'Generatore immagini collegato';
   } catch (error) {
@@ -874,7 +987,9 @@ async function generateImage(promptText) {
     reply = status.textContent;
   }
 
-  c.messages.push({ role: 'assistant', content: reply });
+  const assistantMessage = { role: 'assistant', content: reply };
+  if (generatedImagePath) assistantMessage.imagePath = generatedImagePath;
+  c.messages.push(assistantMessage);
   await saveChat(c);
   if (currentUser) refreshImageUsage();
   busy = false;
@@ -911,9 +1026,18 @@ async function regenerateResponse(chatId, messageIndex) {
       content: message.content || ''
     }));
 
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentUser) {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error || !data.session?.access_token) {
+        throw new Error('Sessione scaduta. Accedi nuovamente.');
+      }
+      headers.Authorization = 'Bearer ' + data.session.access_token;
+    }
+
     const response = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ messages: apiMessages, stream: true })
     });
 
@@ -1016,14 +1140,15 @@ async function sendMessage(text) {
     let outgoingAttachments = [];
     let accessToken = null;
 
-    if (attachments.length && loggedIn) {
+    if (loggedIn) {
       const { data, error } = await supabaseClient.auth.getSession();
       if (error || !data.session?.access_token) {
         throw new Error('Sessione scaduta. Accedi nuovamente.');
       }
-
       accessToken = data.session.access_token;
+    }
 
+    if (attachments.length && loggedIn) {
       for (const attachment of attachments) {
         if (attachment.file) {
           const uploaded = await uploadAttachmentToStorage(attachment.file);
