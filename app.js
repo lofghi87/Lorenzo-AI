@@ -1011,7 +1011,9 @@ async function regenerateResponse(chatId, messageIndex) {
     return;
   }
 
-  // La rigenerazione sostituisce l’ultima risposta senza duplicare la domanda.
+  // Conserva la risposta precedente in memoria finché la nuova non è pronta:
+  // un errore di rete o una quota esaurita non deve cancellare una risposta valida.
+  const previousResponse = chat.messages[messageIndex];
   chat.messages.pop();
   if (activeId !== chatId) activeId = chatId;
   openChat(chatId);
@@ -1055,8 +1057,17 @@ async function regenerateResponse(chatId, messageIndex) {
     $('#connectionStatus').textContent = 'AI collegata';
   } catch (error) {
     console.error('Errore rigenerazione risposta:', error);
-    reply = 'Non sono riuscito a rigenerare la risposta.\n\n' +
-      (error.message || 'Riprova tra poco.');
+    chat.messages.push(previousResponse);
+    thinking.closest('.message')?.remove();
+    await saveChat(chat);
+    openChat(chatId);
+    showToast('Rigenerazione non riuscita: ho mantenuto la risposta precedente. ' +
+      (error.message || 'Riprova tra poco.'));
+    busy = false;
+    resizeInput();
+    renderHistory();
+    scrollBottom();
+    return;
   }
 
   renderAssistantText(thinking, reply, true);
