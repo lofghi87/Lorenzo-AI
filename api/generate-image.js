@@ -43,7 +43,8 @@ module.exports = async function handler(req, res) {
       headers: {
         apikey: SUPABASE_PUBLISHABLE_KEY,
         Authorization: 'Bearer ' + accessToken
-      }
+      },
+      signal: AbortSignal.timeout(10000)
     });
 
     if (!authResponse.ok) {
@@ -92,6 +93,7 @@ module.exports = async function handler(req, res) {
           Authorization: 'Bearer ' + serviceKey,
           'Content-Type': 'application/json'
         },
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           p_user_id: user.id,
           p_daily_limit: DAILY_IMAGE_LIMIT
@@ -140,6 +142,7 @@ module.exports = async function handler(req, res) {
             Authorization: 'Bearer ' + apiToken,
             'Content-Type': 'application/json'
           },
+          signal: AbortSignal.timeout(90000),
           body: JSON.stringify({ prompt, steps: 4 })
         }
       );
