@@ -14,7 +14,7 @@ body {
 button {
   -webkit-tap-highlight-color: transparent;
 }
-button:focus-visible, a:focus-visible, textarea:focus-visible {
+button:focus-visible, a:focus-visible {
   outline: 2px solid var(--accent2);
   outline-offset: 3px;
 }
@@ -290,5 +290,81 @@ body.light .message.assistant .bubble code {
   }
   .tool-btn {
     font-size: 11px;
+  }
+}
+
+
+/* Correzioni di stabilità e rifinitura della chat */
+.composer textarea,
+.composer textarea:focus,
+.composer textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.composer {
+  overflow: visible;
+}
+.composer:focus-within {
+  border-color: rgba(183,164,255,.48);
+  box-shadow: 0 0 0 2px rgba(157,135,255,.08), 0 15px 45px rgba(0,0,0,.16);
+}
+.composer textarea {
+  width: 100%;
+  min-width: 0;
+  border-radius: 8px;
+  caret-color: var(--accent);
+}
+.thinking-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  white-space: normal;
+}
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 1em;
+}
+.thinking-dots span {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: thinking-bounce 1.05s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: .14s; }
+.thinking-dots span:nth-child(3) { animation-delay: .28s; }
+@keyframes thinking-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .35; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.response-reveal {
+  animation: response-in .24s ease both;
+}
+@keyframes response-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.message.assistant .bubble .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0 5px;
+}
+.message.assistant .bubble .katex {
+  font-size: 1.02em;
+}
+body.light .thinking-state { color: #716d7b; }
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dots span, .response-reveal {
+    animation: none !important;
+  }
+}
+@media (max-width: 760px) {
+  .composer:focus-within {
+    box-shadow: 0 0 0 1px rgba(157,135,255,.08);
   }
 }
