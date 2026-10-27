@@ -124,6 +124,24 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    // Rimuovi il contatore giornaliero associato all'account prima di
+    // cancellare l'utente. Se la migration non esiste ancora, è compatibile
+    // con progetti non ancora aggiornati; errori diversi non vengono ignorati.
+    const quotaDeleteResponse = await fetch(
+      `${SUPABASE_URL}/rest/v1/ai_chat_daily_usage?client_key=eq.${encodeURIComponent(user.id)}`,
+      {
+        method: 'DELETE',
+        headers: { ...headers, Prefer: 'return=minimal' },
+        signal: AbortSignal.timeout(15000)
+      }
+    );
+    if (!quotaDeleteResponse.ok && quotaDeleteResponse.status !== 404 && quotaDeleteResponse.status !== 400) {
+      console.error('Eliminazione account: rimozione quota chat non riuscita.', quotaDeleteResponse.status);
+      return res.status(503).json({
+        error: 'Non riesco a completare la cancellazione dei dati di utilizzo. L’account non è stato eliminato; riprova più tardi.'
+      });
+    }
+
     const deleteUserResponse = await fetch(
       `${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(user.id)}`,
       {
