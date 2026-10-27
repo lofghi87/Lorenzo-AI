@@ -645,3 +645,111 @@ body.light .usage-count-row strong {
     transition: none !important;
   }
 }
+
+/* Privacy controls, deletion actions and legal links */
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  width: 100%;
+}
+.history-row .history-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.history-delete {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  opacity: 0;
+  transition: opacity .15s ease, color .15s ease, background .15s ease, border-color .15s ease;
+}
+.history-row:hover .history-delete,
+.history-row:focus-within .history-delete {
+  opacity: 1;
+}
+.history-delete:hover,
+.history-delete:focus-visible {
+  color: #ffb8be;
+  background: rgba(220,70,85,.12);
+  border-color: rgba(220,70,85,.2);
+}
+.danger-btn {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(235,92,104,.35);
+  border-radius: 10px;
+  background: rgba(210,65,78,.09);
+  color: #ffb0b8;
+  font-size: 12px;
+  font-weight: 700;
+  transition: background .18s ease, border-color .18s ease;
+}
+.danger-btn:hover {
+  background: rgba(210,65,78,.16);
+  border-color: rgba(235,92,104,.5);
+}
+.danger-btn:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+.danger-note {
+  display: block;
+  margin: 7px 0 14px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.legal-links {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 5px;
+  color: var(--muted);
+}
+.legal-links a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.legal-links a:hover {
+  color: var(--accent);
+}
+.disclaimer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0 8px;
+  line-height: 1.7;
+}
+@media (max-width: 760px) {
+  .history-delete {
+    opacity: 1;
+    width: 34px;
+    height: 34px;
+  }
+  .legal-links {
+    margin-top: 2px;
+  }
+}
+body.light .history-delete {
+  color: #777382;
+}
+body.light .history-delete:hover,
+body.light .history-delete:focus-visible {
+  color: #b22438;
+  background: rgba(210,65,78,.08);
+}
+body.light .danger-btn {
+  color: #a42132;
+  background: rgba(210,65,78,.05);
+  border-color: rgba(180,45,60,.2);
+}
