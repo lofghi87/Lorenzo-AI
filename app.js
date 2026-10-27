@@ -111,6 +111,7 @@ async function deleteChat(chatId) {
   const title = chat.title || 'questa conversazione';
   if (!window.confirm('Eliminare "' + title + '"? Questa azione non può essere annullata.')) return;
 
+  let storageCleanupFailed = false;
   if (currentUser && chat.dbId) {
     const imagePaths = chat.messages
       .map(message => message?.imagePath)
@@ -119,7 +120,8 @@ async function deleteChat(chatId) {
     if (imagePaths.length) {
       const { error: storageError } = await supabaseClient.storage.from(BUCKET).remove(imagePaths);
       if (storageError) {
-        showToast('La chat verrà eliminata, ma alcune immagini potrebbero restare nello spazio file.');
+        storageCleanupFailed = true;
+        console.error('Pulizia immagini della chat non riuscita:', storageError);
       }
     }
 
@@ -142,7 +144,9 @@ async function deleteChat(chatId) {
   } else {
     renderHistory();
   }
-  showToast('Conversazione eliminata.');
+  showToast(storageCleanupFailed
+    ? 'Chat eliminata, ma alcune immagini potrebbero restare nello spazio file.'
+    : 'Conversazione eliminata.');
 }
 function resetImageMode() {
   imageMode = false;
