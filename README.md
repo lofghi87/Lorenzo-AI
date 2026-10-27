@@ -28,8 +28,9 @@ Le migrazioni SQL in `supabase/migrations/` vanno eseguite nel **SQL Editor** de
 
 1. `202610270001_image_generation_daily_limits.sql` — contatore immagini giornaliero.
 2. `202610270002_ai_chat_daily_limits.sql` — contatore persistente delle richieste chat per account o visitatore anonimo.
+3. `202610270003_private_chat_and_storage_policies.sql` — policy di accesso alla cronologia e agli allegati privati.
 
-La seconda migrazione è necessaria per i limiti persistenti e per il pannello di utilizzo chat. Se la tabella non è stata creata, l'API usa temporaneamente limiti in memoria per non bloccare del tutto il servizio, ma il contatore non è persistente tra tutte le istanze/serverless e il pannello mostra un errore. Prima di condividere il sito pubblicamente, applica entrambe le migrazioni e verifica il risultato.
+La seconda migrazione è necessaria per i limiti persistenti e per il pannello di utilizzo chat. Se la tabella non è stata creata, l'API usa temporaneamente limiti in memoria per non bloccare del tutto il servizio, ma il contatore non è persistente tra tutte le istanze/serverless e il pannello mostra un errore. Prima di condividere il sito pubblicamente, applica tutte e tre le migrazioni e verifica il risultato.
 
 ## Test
 
@@ -45,9 +46,9 @@ GitHub Actions esegue i test su ogni pull request verso `main` e a ogni push su 
 
 ## Checklist prima di invitare il pubblico
 
-1. Applica le due migrazioni SQL sopra.
+1. Applica le tre migrazioni SQL sopra, nell'ordine indicato.
 2. Verifica su Vercel che le quattro variabili d'ambiente server-side siano impostate; dopo ogni modifica delle variabili, esegui un nuovo deployment.
-3. Controlla che RLS sia attivo su `chats` e che le policy consentano a ciascun utente soltanto di leggere, aggiornare ed eliminare le proprie conversazioni. Il bucket `lorenzo-attachments` deve essere privato e consentire agli utenti di lavorare esclusivamente nei percorsi che iniziano con il proprio ID.
+3. La terza migration ricrea le policy della tabella `chats` in modo che ogni utente legga e modifichi soltanto le proprie conversazioni e aggiunge policy per il bucket `lorenzo-attachments`. Prima di eseguirla, controlla le policy già presenti su `storage.objects`: rimuovi manualmente eventuali policy generiche troppo permissive che si applicano a tutti i bucket, perché la tabella Storage è condivisa nel progetto Supabase. Il bucket `lorenzo-attachments` deve essere privato e gli oggetti devono trovarsi in cartelle che iniziano con l'ID del proprietario.
 4. Completa e fai controllare le pagine `privacy.html` e `terms.html`: sono bozze iniziali, non un parere legale. Prima del lancio serve un canale di contatto adatto a un servizio pubblico e devono essere verificate le condizioni dei provider AI.
 5. Esegui i test manuali elencati in basso usando un account di prova, poi prova una seconda registrazione per controllare la separazione dei dati.
 

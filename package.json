@@ -4,7 +4,7 @@
   "private": true,
   "description": "Lorenzo AI - web chat deployable on Vercel",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "test": "node --test"
