@@ -28,7 +28,8 @@ function createResponse() {
       this.ended = true;
       return this;
     },
-    write() {
+    write(chunk) {
+      this.chunks.push(String(chunk));
       return true;
     }
   };
