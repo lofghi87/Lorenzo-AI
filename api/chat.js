@@ -98,8 +98,11 @@ async function consumeChatQuota(userId, serviceKey, req) {
     : 'anon:' + createHash('sha256').update(getClientIp(req)).digest('hex');
   const dailyLimit = userId ? DAILY_CHAT_LIMIT : MEMORY_LIMITS.anonymous.daily;
 
-  // La quota persistente vale anche per gli ospiti: l'IP viene hashato prima
-  // di arrivare al database, così non conserviamo l'indirizzo in chiaro.
+  // Ferma raffiche prima di incrementare la quota persistente, per evitare
+  // che richieste bloccate dalla finestra breve consumino il limite giornaliero.
+  const shortWindow = consumeMemoryRateLimit(clientKey, Boolean(userId));
+  if (!shortWindow.allowed) return shortWindow;
+
   if (serviceKey) {
     const response = await fetch(
       `${SUPABASE_URL}/rest/v1/rpc/consume_ai_chat_request`,
@@ -134,10 +137,6 @@ async function consumeChatQuota(userId, serviceKey, req) {
         };
       }
 
-      // Evita raffiche rapide anche quando la quota giornaliera è persistente.
-      const shortWindow = consumeMemoryRateLimit(clientKey, Boolean(userId));
-      if (!shortWindow.allowed) return shortWindow;
-
       return {
         allowed: true,
         remaining: Math.max(0, Number(row.remaining ?? dailyLimit - 1)),
@@ -155,7 +154,7 @@ async function consumeChatQuota(userId, serviceKey, req) {
     console.warn('Quota chat persistente non disponibile: applicato il limite temporaneo per istanza.');
   }
 
-  return consumeMemoryRateLimit(clientKey, Boolean(userId));
+  return shortWindow;
 }
 async function uploadToGemini(apiKey, buffer, mimeType, name) {
   const start = await fetch(
