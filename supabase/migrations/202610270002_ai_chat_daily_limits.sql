@@ -29,6 +29,12 @@ declare
   v_today date := (now() at time zone 'UTC')::date;
   v_count integer;
 begin
+  -- Elimina soltanto i vecchi contatori del client corrente: evita una
+  -- scansione globale della tabella a ogni messaggio.
+  delete from public.ai_chat_daily_usage
+    where client_key = p_client_key
+      and usage_date < v_today - 30;
+
   if p_client_key is null
      or length(p_client_key) < 1
      or length(p_client_key) > 128
