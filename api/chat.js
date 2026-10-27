@@ -438,7 +438,7 @@ module.exports = async function handler(req, res) {
 
   const accessToken = String(
     req.headers.authorization || ''
-  ).replace(/^Bearer\\s+/i, '');
+  ).replace(/^Bearer\s+/i, '');
 
   const uploadedGeminiFiles = [];
 
