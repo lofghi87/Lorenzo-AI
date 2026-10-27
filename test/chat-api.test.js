@@ -10,6 +10,7 @@ function createResponse() {
     statusCode: 200,
     headers: {},
     body: null,
+    chunks: [],
     ended: false,
     setHeader(name, value) {
       this.headers[name.toLowerCase()] = value;
@@ -103,4 +104,47 @@ test('rejects too many attachments in one message', async () => {
   const res = await invoke({ messages });
   assert.equal(res.statusCode, 400);
   assert.match(res.body.error, /massimo 5 file/i);
+});
+
+test('streams a provider response as valid server-sent events', async () => {
+  const originalFetch = global.fetch;
+  const originalServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  global.fetch = async url => {
+    assert.match(String(url), /streamGenerateContent\\?alt=sse/);
+    const encoder = new TextEncoder();
+    return {
+      ok: true,
+      status: 200,
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            'data: {"candidates":[{"content":{"parts":[{"text":"Ci'
+          ));
+          controller.enqueue(encoder.encode(
+            'ao"}]}}]}\\n\\n'
+          ));
+          controller.close();
+        }
+      })
+    };
+  };
+
+  try {
+    const res = await invoke({
+      stream: true,
+      messages: [{ role: 'user', content: 'Saluta in italiano' }]
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.ended, true);
+    const body = res.chunks.join('');
+    assert.match(body, /"text":"Ciao"/);
+    assert.match(body, /"done":true/);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalServiceKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceKey;
+  }
 });
