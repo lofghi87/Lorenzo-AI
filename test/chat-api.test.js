@@ -127,7 +127,7 @@ test('streams a provider response as valid server-sent events', async () => {
       };
     }
 
-    assert.match(String(url), /streamGenerateContent\\?alt=sse/);
+    assert.match(String(url), /streamGenerateContent\?alt=sse/);
     const encoder = new TextEncoder();
     return {
       ok: true,
@@ -138,7 +138,7 @@ test('streams a provider response as valid server-sent events', async () => {
             'data: {"candidates":[{"content":{"parts":[{"text":"Ci'
           ));
           controller.enqueue(encoder.encode(
-            'ao"}]}}]}\\n\\n'
+            'ao"}]}}]}\n\n'
           ));
           controller.close();
         }
