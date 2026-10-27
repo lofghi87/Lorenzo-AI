@@ -368,3 +368,73 @@ body.light .thinking-state { color: #716d7b; }
     box-shadow: 0 0 0 1px rgba(157,135,255,.08);
   }
 }
+
+
+/* Cronologia chat: area indipendente e scorrevole, come nei menu chat moderni */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.side-label {
+  flex: 0 0 auto;
+}
+.sidebar .history {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(183,164,255,.38) transparent;
+  padding: 0 2px 8px 0;
+  scroll-padding-block: 10px;
+}
+.sidebar .history::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar .history::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar .history::-webkit-scrollbar-thumb {
+  background: rgba(183,164,255,.28);
+  border-radius: 99px;
+}
+.sidebar .history:hover::-webkit-scrollbar-thumb {
+  background: rgba(183,164,255,.52);
+}
+.sidebar .history-item {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar .side-bottom {
+  flex: 0 0 auto;
+  margin-top: 8px;
+}
+body.light .sidebar .history {
+  scrollbar-color: rgba(100,83,145,.32) transparent;
+}
+body.light .sidebar .history::-webkit-scrollbar-thumb {
+  background: rgba(100,83,145,.24);
+}
+@media (max-width: 760px) {
+  .sidebar {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+  .sidebar .history {
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+}
