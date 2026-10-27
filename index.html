@@ -17,7 +17,7 @@
 
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/polish.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/katex.min.css">
 
   <style>
     /* Logo Lorenzo AI nel menu laterale */
@@ -255,9 +255,14 @@
         </div>
       </form>
 
-      <p class="disclaimer">
-        Lorenzo AI può commettere errori. Verifica le informazioni importanti.
-      </p>
+      <div class="disclaimer">
+        <span>Lorenzo AI può commettere errori. Verifica le informazioni importanti.</span>
+        <nav class="legal-links" aria-label="Informazioni legali">
+          <a href="/privacy.html">Privacy</a>
+          <span aria-hidden="true">·</span>
+          <a href="/terms.html">Termini</a>
+        </nav>
+      </div>
     </div>
   </main>
 </div>
@@ -318,20 +323,53 @@
       <small class="usage-reset" id="imageUsageReset">Il limite si azzera ogni giorno.</small>
     </section>
 
+    <section class="usage-card" aria-labelledby="chatUsageHeading">
+      <div class="usage-heading">
+        <div>
+          <b id="chatUsageHeading">Utilizzo chat</b>
+          <small>Richieste giornaliere del tuo account</small>
+        </div>
+        <button type="button" class="usage-refresh" id="refreshChatUsageBtn" aria-label="Aggiorna utilizzo chat" title="Aggiorna">↻</button>
+      </div>
+
+      <div class="usage-count-row">
+        <strong id="chatUsageCount">—</strong>
+        <span>richieste disponibili oggi</span>
+      </div>
+
+      <div
+        class="usage-meter"
+        id="chatUsageMeter"
+        role="progressbar"
+        aria-label="Richieste chat usate oggi"
+        aria-valuemin="0"
+        aria-valuemax="80"
+        aria-valuenow="0"
+      >
+        <span class="usage-meter-fill" id="chatUsageFill"></span>
+      </div>
+
+      <small class="usage-detail" id="chatUsageDetail">Caricamento utilizzo…</small>
+      <small class="usage-reset" id="chatUsageReset">Il limite si azzera ogni giorno.</small>
+    </section>
+
     <div class="setting-info">
       Lorenzo AI utilizza servizi AI per generare risposte e immagini.
       Non inserire chiavi API o password nei messaggi.
     </div>
 
+    <button type="button" class="danger-btn" id="deleteAccountBtn">Elimina account e dati</button>
+    <small class="danger-note">Elimina definitivamente l’account, le conversazioni online e i file salvati nello spazio del tuo account.</small>
+
     <button class="primary-btn" value="close">Fatto</button>
   </form>
 </dialog>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@18.1.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.17/dist/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/contrib/auto-render.min.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

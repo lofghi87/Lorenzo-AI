@@ -227,7 +227,7 @@
     <a class="login-back" href="/">← Torna a Lorenzo AI</a>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0"></script>
 
   <script>
     const client = window.supabase.createClient(
@@ -351,6 +351,10 @@
         window.location.replace('/');
       }
     });
+
+    if (new URLSearchParams(window.location.search).get('accountDeleted') === '1') {
+      message('Account eliminato. Tutti i dati rimossi dal servizio sono stati cancellati.');
+    }
 
     updatePage();
   </script>

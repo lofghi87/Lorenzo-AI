@@ -78,15 +78,76 @@ function renderHistory() {
   h.replaceChildren();
 
   chats.slice().reverse().forEach(c => {
+    const row = document.createElement('div');
+    row.className = 'history-row';
+
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'history-item' + (c.id === activeId ? ' active' : '');
     b.textContent = '◷ ' + (c.title || 'Nuova conversazione');
     b.title = c.title || '';
     b.onclick = () => openChat(c.id);
-    h.append(b);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'history-delete';
+    remove.textContent = '×';
+    remove.title = 'Elimina conversazione';
+    remove.setAttribute('aria-label', 'Elimina conversazione: ' + (c.title || 'Nuova conversazione'));
+    remove.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteChat(c.id);
+    };
+
+    row.append(b, remove);
+    h.append(row);
   });
 }
 
+async function deleteChat(chatId) {
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat || busy) return;
+  const title = chat.title || 'questa conversazione';
+  if (!window.confirm('Eliminare "' + title + '"? Questa azione non può essere annullata.')) return;
+
+  let storageCleanupFailed = false;
+  if (currentUser && chat.dbId) {
+    const imagePaths = chat.messages
+      .map(message => message?.imagePath)
+      .filter(path => typeof path === 'string' && path.startsWith(currentUser.id + '/'));
+
+    if (imagePaths.length) {
+      const { error: storageError } = await supabaseClient.storage.from(BUCKET).remove(imagePaths);
+      if (storageError) {
+        storageCleanupFailed = true;
+        console.error('Pulizia immagini della chat non riuscita:', storageError);
+      }
+    }
+
+    const { error } = await supabaseClient.from('chats').delete()
+      .eq('id', chat.dbId)
+      .eq('user_id', currentUser.id);
+    if (error) {
+      console.error('Errore eliminazione chat:', error);
+      showToast('Non sono riuscito a eliminare la conversazione.');
+      return;
+    }
+  }
+
+  chats = chats.filter(item => item.id !== chatId);
+  if (!currentUser) saveLocalChats();
+
+  if (activeId === chatId) {
+    if (chats.length) openChat(chats[chats.length - 1].id);
+    else newChat();
+  } else {
+    renderHistory();
+  }
+  showToast(storageCleanupFailed
+    ? 'Chat eliminata, ma alcune immagini potrebbero restare nello spazio file.'
+    : 'Conversazione eliminata.');
+}
 function resetImageMode() {
   imageMode = false;
   if (imageModeBtn) {
@@ -127,6 +188,9 @@ function openChat(chatId) {
     const bubble = addMessage(m.role, m.content, false, m.attachmentNames);
     if (m.role === 'assistant' && String(m.content || '').trim()) {
       addMessageActions(bubble, c.id, index);
+    }
+    if (m.role === 'assistant' && typeof m.imagePath === 'string') {
+      void renderSavedGeneratedImage(bubble, m.imagePath, m.content);
     }
   });
 
@@ -495,6 +559,9 @@ async function saveChat(chat) {
     content: m.content || '',
     ...(Array.isArray(m.attachmentNames)
       ? { attachmentNames: m.attachmentNames }
+      : {}),
+    ...(typeof m.imagePath === 'string'
+      ? { imagePath: m.imagePath }
       : {})
   }));
 
@@ -752,6 +819,50 @@ async function uploadAttachmentToStorage(file) {
   return { name: file.name, size: file.size, mimeType: file.type, path };
 }
 
+async function saveGeneratedImage(imageData) {
+  if (!currentUser || typeof imageData !== 'string' || !imageData.startsWith('data:image/')) {
+    return null;
+  }
+
+  const response = await fetch(imageData);
+  if (!response.ok) throw new Error('Impossibile preparare il file immagine.');
+  const blob = await response.blob();
+  const path = currentUser.id + '/generated-' + id() + '.jpg';
+
+  const { error } = await supabaseClient.storage.from(BUCKET).upload(path, blob, {
+    contentType: blob.type || 'image/jpeg',
+    upsert: false
+  });
+  if (error) throw error;
+  return path;
+}
+
+async function renderSavedGeneratedImage(bubble, path, promptText) {
+  if (!bubble || !currentUser || !path.startsWith(currentUser.id + '/')) return;
+
+  const { data, error } = await supabaseClient.storage.from(BUCKET).createSignedUrl(path, 300);
+  if (error || !data?.signedUrl) {
+    showToast('Non riesco a caricare un’immagine salvata.');
+    return;
+  }
+
+  const img = document.createElement('img');
+  img.src = data.signedUrl;
+  img.alt = String(promptText || 'Immagine generata da Lorenzo AI').slice(0, 500);
+  img.loading = 'lazy';
+  img.decoding = 'async';
+  img.style.cssText = 'display:block;width:100%;max-width:512px;height:auto;border-radius:14px;margin-top:8px';
+  bubble.append(img);
+
+  const open = document.createElement('a');
+  open.href = data.signedUrl;
+  open.target = '_blank';
+  open.rel = 'noopener noreferrer';
+  open.textContent = 'Apri immagine';
+  open.style.cssText = 'display:inline-block;margin-top:10px';
+  bubble.append(open);
+}
+
 /* Visualizzazione dell'immagine generata. */
 function addGeneratedImage(imageData, promptText) {
   const wrap = document.createElement('div');
@@ -865,6 +976,12 @@ async function generateImage(promptText) {
 
     status.remove();
     addGeneratedImage(data.image, promptText);
+    try {
+      generatedImagePath = await saveGeneratedImage(data.image);
+    } catch (storageError) {
+      console.error('Immagine generata ma non salvata in cronologia:', storageError);
+      showToast('Immagine creata, ma non sarà disponibile nella cronologia.');
+    }
     reply = 'Immagine generata per: ' + promptText;
     $('#connectionStatus').textContent = 'Generatore immagini collegato';
   } catch (error) {
@@ -874,7 +991,9 @@ async function generateImage(promptText) {
     reply = status.textContent;
   }
 
-  c.messages.push({ role: 'assistant', content: reply });
+  const assistantMessage = { role: 'assistant', content: reply };
+  if (generatedImagePath) assistantMessage.imagePath = generatedImagePath;
+  c.messages.push(assistantMessage);
   await saveChat(c);
   if (currentUser) refreshImageUsage();
   busy = false;
@@ -892,7 +1011,9 @@ async function regenerateResponse(chatId, messageIndex) {
     return;
   }
 
-  // La rigenerazione sostituisce l’ultima risposta senza duplicare la domanda.
+  // Conserva la risposta precedente in memoria finché la nuova non è pronta:
+  // un errore di rete o una quota esaurita non deve cancellare una risposta valida.
+  const previousResponse = chat.messages[messageIndex];
   chat.messages.pop();
   if (activeId !== chatId) activeId = chatId;
   openChat(chatId);
@@ -911,9 +1032,18 @@ async function regenerateResponse(chatId, messageIndex) {
       content: message.content || ''
     }));
 
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentUser) {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error || !data.session?.access_token) {
+        throw new Error('Sessione scaduta. Accedi nuovamente.');
+      }
+      headers.Authorization = 'Bearer ' + data.session.access_token;
+    }
+
     const response = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ messages: apiMessages, stream: true })
     });
 
@@ -927,8 +1057,17 @@ async function regenerateResponse(chatId, messageIndex) {
     $('#connectionStatus').textContent = 'AI collegata';
   } catch (error) {
     console.error('Errore rigenerazione risposta:', error);
-    reply = 'Non sono riuscito a rigenerare la risposta.\n\n' +
-      (error.message || 'Riprova tra poco.');
+    chat.messages.push(previousResponse);
+    thinking.closest('.message')?.remove();
+    await saveChat(chat);
+    openChat(chatId);
+    showToast('Rigenerazione non riuscita: ho mantenuto la risposta precedente. ' +
+      (error.message || 'Riprova tra poco.'));
+    busy = false;
+    resizeInput();
+    renderHistory();
+    scrollBottom();
+    return;
   }
 
   renderAssistantText(thinking, reply, true);
@@ -1016,14 +1155,15 @@ async function sendMessage(text) {
     let outgoingAttachments = [];
     let accessToken = null;
 
-    if (attachments.length && loggedIn) {
+    if (loggedIn) {
       const { data, error } = await supabaseClient.auth.getSession();
       if (error || !data.session?.access_token) {
         throw new Error('Sessione scaduta. Accedi nuovamente.');
       }
-
       accessToken = data.session.access_token;
+    }
 
+    if (attachments.length && loggedIn) {
       for (const attachment of attachments) {
         if (attachment.file) {
           const uploaded = await uploadAttachmentToStorage(attachment.file);
@@ -1228,6 +1368,102 @@ async function refreshImageUsage() {
   }
 }
 
+async function refreshChatUsage() {
+  const count = $('#chatUsageCount');
+  const fill = $('#chatUsageFill');
+  const meter = $('#chatUsageMeter');
+  const reset = $('#chatUsageReset');
+  const detail = $('#chatUsageDetail');
+  const refresh = $('#refreshChatUsageBtn');
+  if (!count || !fill || !meter || !reset || !detail) return;
+
+  if (!currentUser) {
+    count.textContent = '—';
+    fill.style.width = '0%';
+    meter.setAttribute('aria-valuenow', '0');
+    detail.textContent = 'Accedi per vedere il contatore del tuo account.';
+    reset.textContent = 'Le chat senza account hanno limiti temporanei più bassi.';
+    return;
+  }
+
+  if (refresh) refresh.disabled = true;
+  detail.textContent = 'Caricamento utilizzo…';
+
+  try {
+    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (sessionError || !accessToken) throw new Error('Sessione scaduta. Accedi nuovamente.');
+
+    const response = await fetch('/api/chat-quota', {
+      headers: { Authorization: 'Bearer ' + accessToken }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Limite chat non disponibile.');
+
+    const limit = Math.max(1, Number(data.limit) || 80);
+    const used = Math.max(0, Math.min(limit, Number(data.used) || 0));
+    const remaining = Math.max(0, Math.min(limit, Number(data.remaining) || 0));
+    count.textContent = remaining + ' di ' + limit;
+    fill.style.width = (used / limit * 100) + '%';
+    meter.setAttribute('aria-valuenow', String(used));
+    meter.setAttribute('aria-valuemax', String(limit));
+    detail.textContent = used + ' ' + (used === 1 ? 'richiesta usata' : 'richieste usate') + ' oggi (UTC).';
+
+    if (data.resetsAt) {
+      reset.textContent = 'Si azzera alle ' + new Date(data.resetsAt).toLocaleTimeString('it-IT', {
+        hour: '2-digit', minute: '2-digit'
+      }) + ' ora locale.';
+    } else {
+      reset.textContent = 'Il limite si azzera ogni giorno.';
+    }
+  } catch (error) {
+    count.textContent = '—';
+    fill.style.width = '0%';
+    meter.setAttribute('aria-valuenow', '0');
+    detail.textContent = error.message || 'Impossibile caricare il limite chat.';
+    reset.textContent = 'Se il problema continua, controlla la migration Supabase inclusa nel progetto.';
+  } finally {
+    if (refresh) refresh.disabled = false;
+  }
+}
+
+async function deleteAccount() {
+  if (!currentUser || busy) return;
+  const accepted = window.confirm(
+    'Vuoi eliminare definitivamente il tuo account Lorenzo AI? Verranno rimossi le conversazioni cloud e i file associati. Questa azione non può essere annullata.'
+  );
+  if (!accepted) return;
+
+  const button = $('#deleteAccountBtn');
+  if (button) button.disabled = true;
+
+  try {
+    const { data, error } = await supabaseClient.auth.getSession();
+    const accessToken = data?.session?.access_token;
+    if (error || !accessToken) throw new Error('Sessione scaduta. Accedi nuovamente.');
+
+    const response = await fetch('/api/delete-account', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + accessToken }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Eliminazione account non riuscita.');
+
+    try { localStorage.removeItem(STORE_KEY); } catch {}
+    chats = [];
+    activeId = null;
+    await supabaseClient.auth.signOut();
+    window.location.replace('/login.html?accountDeleted=1');
+  } catch (error) {
+    showToast(error.message || 'Non sono riuscito a eliminare l’account.');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+$('#deleteAccountBtn')?.addEventListener('click', deleteAccount);
+$('#refreshChatUsageBtn')?.addEventListener('click', refreshChatUsage);
+
 $('#settingsBtn').onclick = async () => {
   const { data, error } = await supabaseClient.auth.getSession();
   if (error) showToast('Impossibile controllare la sessione.');
@@ -1238,7 +1474,10 @@ $('#settingsBtn').onclick = async () => {
     : 'Le chat senza account sono salvate solo su questo dispositivo.';
   $('#settingsTag').textContent = session ? 'Connessa' : 'Locale';
   $('#settingsDialog').showModal();
+  $('#deleteAccountBtn').hidden = !session;
+  $('#deleteAccountBtn').disabled = false;
   refreshImageUsage();
+  refreshChatUsage();
 };
 
 $('#refreshUsageBtn')?.addEventListener('click', refreshImageUsage);

@@ -1,6 +1,15 @@
+const { createHash } = require('crypto');
 
 const MAX_MESSAGES = 40;
 const MAX_TEXT_LENGTH = 12000;
+const MAX_TOTAL_TEXT_LENGTH = 60000;
+const DAILY_CHAT_LIMIT = 80;
+const RATE_WINDOW_MS = 15 * 60 * 1000;
+const memoryRateLimits = new Map();
+const MEMORY_LIMITS = {
+  authenticated: { window: 12, daily: 80 },
+  anonymous: { window: 5, daily: 12 }
+};
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_TOTAL_FILES = 20 * 1024 * 1024;
 const MAX_FILES = 5;
@@ -23,12 +32,130 @@ const ALLOWED_TYPES = new Set([
   'application/pdf'
 ]);
 
-function errorMessage(message) {
+function errorMessage(message, statusCode = 400) {
   const error = new Error(message);
-  error.statusCode = 400;
+  error.statusCode = statusCode;
   return error;
 }
 
+function getClientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '')
+    .split(',').map(value => value.trim()).filter(Boolean);
+  return String(req.headers['x-real-ip'] || forwarded[forwarded.length - 1] || 'unknown')
+    .slice(0, 100);
+}
+
+function consumeMemoryRateLimit(key, authenticated) {
+  const now = Date.now();
+  const utcDay = new Date(now).toISOString().slice(0, 10);
+  const limits = authenticated ? MEMORY_LIMITS.authenticated : MEMORY_LIMITS.anonymous;
+  let item = memoryRateLimits.get(key);
+
+  if (!item || item.day !== utcDay) {
+    item = { day: utcDay, dailyCount: 0, windowStarted: now, windowCount: 0 };
+  }
+  if (now - item.windowStarted >= RATE_WINDOW_MS) {
+    item.windowStarted = now;
+    item.windowCount = 0;
+  }
+
+  if (item.windowCount >= limits.window || item.dailyCount >= limits.daily) {
+    const resetAt = item.dailyCount >= limits.daily
+      ? Date.parse(utcDay + 'T00:00:00.000Z') + 86400000
+      : item.windowStarted + RATE_WINDOW_MS;
+    return {
+      allowed: false,
+      remaining: 0,
+      resetsAt: new Date(resetAt).toISOString(),
+      retryAfter: Math.max(1, Math.ceil((resetAt - now) / 1000))
+    };
+  }
+
+  item.windowCount += 1;
+  item.dailyCount += 1;
+  memoryRateLimits.set(key, item);
+
+  if (memoryRateLimits.size > 10000) {
+    for (const [storedKey, stored] of memoryRateLimits) {
+      if (stored.day !== utcDay || now - stored.windowStarted > 2 * RATE_WINDOW_MS) {
+        memoryRateLimits.delete(storedKey);
+      }
+      if (memoryRateLimits.size <= 8000) break;
+    }
+  }
+
+  return {
+    allowed: true,
+    remaining: Math.max(0, limits.daily - item.dailyCount),
+    resetsAt: new Date(Date.parse(utcDay + 'T00:00:00.000Z') + 86400000).toISOString(),
+    retryAfter: 0
+  };
+}
+
+async function consumeChatQuota(userId, serviceKey, req) {
+  const clientKey = userId
+    ? userId
+    : 'anon:' + createHash('sha256').update(getClientIp(req)).digest('hex');
+  const dailyLimit = userId ? DAILY_CHAT_LIMIT : MEMORY_LIMITS.anonymous.daily;
+
+  // Ferma raffiche prima di incrementare la quota persistente, per evitare
+  // che richieste bloccate dalla finestra breve consumino il limite giornaliero.
+  const shortWindow = consumeMemoryRateLimit(clientKey, Boolean(userId));
+  if (!shortWindow.allowed) return shortWindow;
+
+  if (serviceKey) {
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/rpc/consume_ai_chat_request`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: serviceKey,
+          Authorization: 'Bearer ' + serviceKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          p_client_key: clientKey,
+          p_daily_limit: dailyLimit
+        }),
+        signal: AbortSignal.timeout(15000)
+      }
+    );
+
+    if (response.ok) {
+      const rows = await response.json();
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      if (!row || typeof row.allowed !== 'boolean') {
+        throw errorMessage('Il controllo dei limiti non ha restituito dati validi.', 503);
+      }
+      if (!row.allowed) {
+        const resetAt = row.resets_at || new Date(Date.now() + 3600000).toISOString();
+        return {
+          allowed: false,
+          remaining: 0,
+          resetsAt: resetAt,
+          retryAfter: Math.max(1, Math.ceil((Date.parse(resetAt) - Date.now()) / 1000))
+        };
+      }
+
+      return {
+        allowed: true,
+        remaining: Math.max(0, Number(row.remaining ?? dailyLimit - 1)),
+        resetsAt: row.resets_at || null,
+        retryAfter: 0
+      };
+    }
+
+    // Durante la configurazione, una migration ancora assente usa il limite
+    // temporaneo per istanza; gli errori di servizio invece bloccano la richiesta.
+    if (response.status !== 404 && response.status !== 400) {
+      console.error('Controllo quota chat non riuscito:', response.status);
+      throw errorMessage('Non riesco a verificare il limite della chat. Riprova più tardi.', 503);
+    }
+    console.warn('Quota chat persistente non disponibile: applicato il limite temporaneo per istanza.');
+  }
+
+  return shortWindow;
+}
 async function uploadToGemini(apiKey, buffer, mimeType, name) {
   const start = await fetch(
     `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`,
@@ -43,7 +170,8 @@ async function uploadToGemini(apiKey, buffer, mimeType, name) {
       },
       body: JSON.stringify({
         file: { display_name: name }
-      })
+      }),
+      signal: AbortSignal.timeout(20000)
     }
   );
 
@@ -65,7 +193,8 @@ async function uploadToGemini(apiKey, buffer, mimeType, name) {
       'Content-Type': mimeType,
       'Content-Length': String(buffer.length)
     },
-    body: buffer
+    body: buffer,
+    signal: AbortSignal.timeout(60000)
   });
 
   const result = await finish.json();
@@ -79,20 +208,19 @@ async function uploadToGemini(apiKey, buffer, mimeType, name) {
 
 async function verifyUser(accessToken) {
   if (!accessToken) {
-    throw errorMessage(
-      'Per usare allegati fino a 10 MB devi accedere al tuo account.'
-    );
+    throw errorMessage('Accedi al tuo account per usare questo allegato.', 401);
   }
 
   const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     headers: {
       apikey: SUPABASE_PUBLISHABLE_KEY,
       Authorization: `Bearer ${accessToken}`
-    }
+    },
+    signal: AbortSignal.timeout(10000)
   });
 
   if (!response.ok) {
-    throw errorMessage('Sessione scaduta. Accedi nuovamente.');
+    throw errorMessage('Sessione scaduta. Accedi nuovamente.', 401);
   }
 
   const user = await response.json();
@@ -128,7 +256,8 @@ async function downloadFromStorage(path, userId, serviceKey) {
       headers: {
         apikey: serviceKey,
         Authorization: `Bearer ${serviceKey}`
-      }
+      },
+      signal: AbortSignal.timeout(20000)
     }
   );
 
@@ -151,10 +280,35 @@ async function deleteGeminiFile(apiKey, fileName) {
   try {
     await fetch(
       `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${encodeURIComponent(apiKey)}`,
-      { method: 'DELETE' }
+      { method: 'DELETE', signal: AbortSignal.timeout(15000) }
     );
   } catch (error) {
     console.error('Pulizia file Gemini non riuscita:', error.message);
+  }
+}
+
+async function deleteTemporaryStorageFile(path, serviceKey) {
+  if (!serviceKey || typeof path !== 'string') return;
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/${BUCKET}`,
+      {
+        method: 'DELETE',
+        headers: {
+          apikey: serviceKey,
+          Authorization: 'Bearer ' + serviceKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ prefixes: [path] }),
+        signal: AbortSignal.timeout(15000)
+      }
+    );
+    if (!response.ok && response.status !== 404) {
+      console.error('Rimozione allegato temporaneo non riuscita:', response.status);
+    }
+  } catch (error) {
+    console.error('Rimozione allegato temporaneo non riuscita:', error.message);
   }
 }
 
@@ -285,9 +439,34 @@ module.exports = async function handler(req, res) {
   const messages = req.body?.messages;
 
   if (!Array.isArray(messages) || !messages.length) {
-    return res.status(400).json({
-      error: 'Nessun messaggio ricevuto.'
-    });
+    return res.status(400).json({ error: 'Nessun messaggio ricevuto.' });
+  }
+  if (messages.length > MAX_MESSAGES) {
+    return res.status(400).json({ error: `Puoi inviare al massimo ${MAX_MESSAGES} messaggi di contesto.` });
+  }
+
+  let totalTextLength = 0;
+  for (const message of messages) {
+    if (!message || !['user', 'assistant'].includes(message.role)) {
+      return res.status(400).json({ error: 'La conversazione contiene un messaggio non valido.' });
+    }
+    if (message.content !== undefined && typeof message.content !== 'string') {
+      return res.status(400).json({ error: 'Il testo di un messaggio non è valido.' });
+    }
+    const contentLength = String(message.content || '').length;
+    if (contentLength > MAX_TEXT_LENGTH) {
+      return res.status(400).json({ error: 'Un messaggio supera il limite di 12.000 caratteri.' });
+    }
+    totalTextLength += contentLength;
+    if (totalTextLength > MAX_TOTAL_TEXT_LENGTH) {
+      return res.status(400).json({ error: 'La conversazione inviata è troppo lunga. Inizia una nuova chat.' });
+    }
+    if (message.attachments !== undefined && !Array.isArray(message.attachments)) {
+      return res.status(400).json({ error: 'La lista degli allegati non è valida.' });
+    }
+    if (Array.isArray(message.attachments) && message.attachments.length > MAX_FILES) {
+      return res.status(400).json({ error: 'Puoi allegare al massimo 5 file per messaggio.' });
+    }
   }
 
   const accessToken = String(
@@ -295,6 +474,7 @@ module.exports = async function handler(req, res) {
   ).replace(/^Bearer\s+/i, '');
 
   const uploadedGeminiFiles = [];
+  const temporaryStoragePaths = [];
 
   try {
     const hasStorageAttachments = messages.some(message =>
@@ -306,15 +486,33 @@ module.exports = async function handler(req, res) {
     );
 
     let userId = null;
-
-    if (hasStorageAttachments) {
-      if (!serviceKey) {
-        return res.status(503).json({
-          error: 'Configurazione Supabase mancante su Vercel.'
-        });
-      }
-
+    if (accessToken) {
       userId = await verifyUser(accessToken);
+    }
+
+    if (hasStorageAttachments && !userId) {
+      return res.status(401).json({
+        error: 'Accedi al tuo account per utilizzare allegati grandi.'
+      });
+    }
+
+    if (hasStorageAttachments && !serviceKey) {
+      return res.status(503).json({
+        error: 'Configurazione Supabase mancante su Vercel.'
+      });
+    }
+
+    const quota = await consumeChatQuota(userId, serviceKey, req);
+    if (!quota.allowed) {
+      res.setHeader('Retry-After', String(quota.retryAfter || 60));
+      return res.status(429).json({
+        error: userId
+          ? 'Hai raggiunto il limite di richieste della chat. Riprova dopo il reset indicato.'
+          : 'Hai raggiunto il limite temporaneo per le chat senza account. Accedi per avere limiti più ampi.',
+        limit: userId ? DAILY_CHAT_LIMIT : MEMORY_LIMITS.anonymous.daily,
+        remaining: 0,
+        resetsAt: quota.resetsAt || null
+      });
     }
 
     let totalBytes = 0;
@@ -382,6 +580,7 @@ module.exports = async function handler(req, res) {
             userId,
             serviceKey
           );
+          temporaryStoragePaths.push(file.path);
 
           totalBytes += buffer.length;
 
@@ -469,26 +668,17 @@ module.exports = async function handler(req, res) {
           'Content-Type': 'application/json',
           'x-goog-api-key': apiKey
         },
+        signal: AbortSignal.timeout(90000),
         body: JSON.stringify({
           
 systemInstruction: {
   parts: [{
     text: `Sei Lorenzo AI, un assistente utile, chiaro e cordiale.
 IDENTITÀ E ORIGINI
-Sei Lorenzo AI, un assistente sviluppato da Lorenzo Poletti, uno studente italiano che ha creato questo progetto per hobby, per passione verso la tecnologia e per sperimentare con l'intelligenza artificiale.
-
-Quando l'utente ti chiede chi ti ha creato, chi è il tuo sviluppatore, chi c'è dietro Lorenzo AI o fa una domanda equivalente, rispondi in modo naturale e attribuisci correttamente la creazione del progetto a Lorenzo Poletti.
-
-Puoi spiegare che Lorenzo ha realizzato Lorenzo AI come progetto personale per imparare, sperimentare e costruire un assistente AI con funzioni di conversazione, analisi di immagini e documenti e generazione di immagini.
-
-Se l'utente chiede altre informazioni su Lorenzo, puoi condividere queste informazioni generali: è uno studente italiano appassionato di tecnologia e intelligenza artificiale e sviluppa il progetto nel tempo libero.
-
-Non inventare dettagli biografici, risultati, qualifiche o informazioni personali che non conosci. Non divulgare né chiedere di divulgare indirizzi, contatti privati, credenziali, dati familiari o altre informazioni sensibili. Se non conosci la risposta a una domanda su Lorenzo, dillo chiaramente.
-
-Non affermare di conoscere personalmente Lorenzo o di avere accesso alla sua vita privata. Distingui sempre le informazioni note dalle supposizioni.
+Sei un assistente sviluppato da Lorenzo, creatore indipendente del progetto. Se ti chiedono chi ha creato Lorenzo AI, attribuisci il progetto a Lorenzo senza divulgare informazioni personali non necessarie. Non inventare dettagli biografici, qualifiche o risultati personali e non affermare di conoscere privatamente il creatore.
 
 COMPORTAMENTO GENERALE
-Rispondi nella lingua dell'utente, usando un tono amichevole e chiaro. Se l'utente scrive in italiano, rispondi in italiano. Quando ricevi immagini o PDF, analizzane il contenuto e rispondi alla domanda dell'utente.`
+Rispondi nella lingua dell'utente, usando un tono amichevole e chiaro. Distingui i fatti dalle supposizioni, ammetti quando non sai qualcosa e non presentare come verificate le informazioni che non hai controllato. Quando ricevi immagini o PDF, analizzane il contenuto e rispondi alla domanda dell'utente. Evita di ripetere dati personali sensibili presenti nei documenti se non sono necessari alla richiesta.`
   }]
 },
 
@@ -538,10 +728,9 @@ Rispondi nella lingua dell'utente, usando un tono amichevole e chiaro. Se l'uten
       error: error.message || 'Si è verificato un errore durante la richiesta.'
     });
   } finally {
-    await Promise.all(
-      uploadedGeminiFiles.map(fileName =>
-        deleteGeminiFile(apiKey, fileName)
-      )
-    );
+    await Promise.all([
+      ...uploadedGeminiFiles.map(fileName => deleteGeminiFile(apiKey, fileName)),
+      ...temporaryStoragePaths.map(path => deleteTemporaryStorageFile(path, serviceKey))
+    ]);
   }
 };
