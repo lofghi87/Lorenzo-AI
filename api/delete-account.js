@@ -89,13 +89,15 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    if (objects.length) {
+    // Supabase Storage accetta al massimo 1000 oggetti per chiamata remove.
+    for (let index = 0; index < objects.length; index += 1000) {
+      const batch = objects.slice(index, index + 1000);
       const removeResponse = await fetch(
         `${SUPABASE_URL}/storage/v1/object/${BUCKET}`,
         {
           method: 'DELETE',
           headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prefixes: objects }),
+          body: JSON.stringify({ prefixes: batch }),
           signal: AbortSignal.timeout(30000)
         }
       );
