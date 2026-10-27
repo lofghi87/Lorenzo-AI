@@ -429,18 +429,6 @@ module.exports = async function handler(req, res) {
   const apiKey = process.env.GEMINI_API_KEY;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!apiKey) {
-    return res.status(503).json({
-      error: 'GEMINI_API_KEY non configurata su Vercel.'
-    });
-  }
-
-  if (!serviceKey) {
-    return res.status(503).json({
-      error: 'Configurazione dei limiti non disponibile. Controlla SUPABASE_SERVICE_ROLE_KEY nelle variabili server di Vercel.'
-    });
-  }
-
   const wantsStream = req.body?.stream === true;
   const messages = req.body?.messages;
 
@@ -473,6 +461,17 @@ module.exports = async function handler(req, res) {
     if (Array.isArray(message.attachments) && message.attachments.length > MAX_FILES) {
       return res.status(400).json({ error: 'Puoi allegare al massimo 5 file per messaggio.' });
     }
+  }
+
+  // Validate payloads before checking external configuration so bad input
+  // always receives a deterministic 4xx response without consuming resources.
+  if (!apiKey) {
+    return res.status(503).json({ error: 'GEMINI_API_KEY non configurata su Vercel.' });
+  }
+  if (!serviceKey) {
+    return res.status(503).json({
+      error: 'Configurazione dei limiti non disponibile. Controlla SUPABASE_SERVICE_ROLE_KEY nelle variabili server di Vercel.'
+    });
   }
 
   const accessToken = String(
