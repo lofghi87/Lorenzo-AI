@@ -35,22 +35,22 @@ begin
     return;
   end if;
 
-  insert into public.image_generation_daily_usage as usage (
+  insert into public.image_generation_daily_usage as q (
     user_id, usage_date, generation_count
   )
   values (p_user_id, v_today, 1)
   on conflict (user_id, usage_date)
   do update
-    set generation_count = usage.generation_count + 1
-    where usage.generation_count < p_daily_limit
+    set generation_count = q.generation_count + 1
+    where q.generation_count < p_daily_limit
   returning generation_count into v_count;
 
   if v_count is null then
-    select usage.generation_count
+    select q.generation_count
       into v_count
       from public.image_generation_daily_usage as usage
-      where usage.user_id = p_user_id
-        and usage.usage_date = v_today;
+      where q.user_id = p_user_id
+        and q.usage_date = v_today;
 
     return query select false, 0, ((v_today + 1)::timestamp at time zone 'UTC');
     return;
