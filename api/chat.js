@@ -171,7 +171,8 @@ async function uploadToGemini(apiKey, buffer, mimeType, name) {
       },
       body: JSON.stringify({
         file: { display_name: name }
-      })
+      }),
+      signal: AbortSignal.timeout(20000)
     }
   );
 
@@ -193,7 +194,8 @@ async function uploadToGemini(apiKey, buffer, mimeType, name) {
       'Content-Type': mimeType,
       'Content-Length': String(buffer.length)
     },
-    body: buffer
+    body: buffer,
+    signal: AbortSignal.timeout(60000)
   });
 
   const result = await finish.json();
@@ -214,7 +216,8 @@ async function verifyUser(accessToken) {
     headers: {
       apikey: SUPABASE_PUBLISHABLE_KEY,
       Authorization: `Bearer ${accessToken}`
-    }
+    },
+    signal: AbortSignal.timeout(10000)
   });
 
   if (!response.ok) {
@@ -254,7 +257,8 @@ async function downloadFromStorage(path, userId, serviceKey) {
       headers: {
         apikey: serviceKey,
         Authorization: `Bearer ${serviceKey}`
-      }
+      },
+      signal: AbortSignal.timeout(20000)
     }
   );
 
@@ -665,6 +669,7 @@ module.exports = async function handler(req, res) {
           'Content-Type': 'application/json',
           'x-goog-api-key': apiKey
         },
+        signal: AbortSignal.timeout(90000),
         body: JSON.stringify({
           
 systemInstruction: {
