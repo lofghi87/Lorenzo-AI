@@ -812,6 +812,11 @@ body.legal-document {
 .history-row {
   gap: 3px;
 }
+.sidebar .history-row .history-item {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
 .history-actions {
   display: flex;
   flex: 0 0 auto;
