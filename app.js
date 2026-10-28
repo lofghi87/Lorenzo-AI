@@ -78,7 +78,7 @@ function saveLocalChats() {
 }
 
 function pinnedStorageKey() {
-  return 'lorenzo-ai-pinned-v1:' + (currentUser?.id || 'guest');
+  return PINNED_STORE_KEY + ':' + (currentUser?.id || 'guest');
 }
 
 function loadPinnedChatIds() {
@@ -1699,7 +1699,10 @@ async function deleteAccount() {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || 'Eliminazione account non riuscita.');
 
-    try { localStorage.removeItem(STORE_KEY); } catch {}
+    try {
+      localStorage.removeItem(STORE_KEY);
+      localStorage.removeItem(pinnedStorageKey());
+    } catch {}
     chats = [];
     activeId = null;
     await supabaseClient.auth.signOut();
