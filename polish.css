@@ -753,3 +753,12 @@ body.light .danger-btn {
   background: rgba(210,65,78,.05);
   border-color: rgba(180,45,60,.2);
 }
+
+
+/* Legal documents scroll independently from the fixed-height chat layout */
+body.legal-document {
+  height: auto;
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
