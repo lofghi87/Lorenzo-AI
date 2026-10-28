@@ -77,7 +77,15 @@
       <span>＋</span> Nuova chat
     </button>
 
-    <div class="side-label">RECENTI</div>
+    <div class="side-label history-heading">CONVERSAZIONI</div>
+    <div class="history-toolbar">
+      <label class="history-search">
+        <span class="visually-hidden">Cerca nelle conversazioni</span>
+        <input id="historySearch" type="search" maxlength="100" placeholder="Cerca nelle chat…" autocomplete="off">
+      </label>
+      <button id="pinnedFilterBtn" class="pinned-filter" type="button" aria-pressed="false">★ Preferite</button>
+    </div>
+    <p id="historyEmpty" class="history-empty" aria-live="polite" hidden></p>
     <div id="history" class="history"></div>
 
     <div class="side-bottom">
@@ -239,6 +247,18 @@
               <span>✧</span> <span>Crea immagine</span>
             </button>
 
+            <details class="prompt-library">
+              <summary aria-label="Apri i prompt pronti">Prompt</summary>
+              <div class="prompt-library-menu" role="group" aria-label="Prompt pronti">
+                <button type="button" class="prompt-template" data-prompt="Spiegami [argomento] con parole semplici e un esempio pratico.">Spiega un argomento</button>
+                <button type="button" class="prompt-template" data-prompt="Aiutami a creare un piano di studio per [materia], con obiettivi giornalieri realistici.">Piano di studio</button>
+                <button type="button" class="prompt-template" data-prompt="Rivedi questo testo e suggerisci come renderlo più chiaro, mantenendo il mio tono: [incolla il testo]">Rivedi un testo</button>
+                <button type="button" class="prompt-template" data-prompt="Aiutami a risolvere questo problema di codice. Spiega il ragionamento e proponi una soluzione: [incolla il codice o l’errore]">Aiuto codice</button>
+              </div>
+            </details>
+            <button type="button" id="voiceInputBtn" class="tool-btn voice-input" aria-label="Dettatura vocale" title="Dettatura vocale">
+              <span aria-hidden="true">🎙</span><span>Voce</span>
+            </button>
             <span class="privacy-note">Immagini e PDF supportati</span>
           </div>
 
@@ -370,6 +390,7 @@
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.17/dist/purify.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/katex.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/contrib/auto-render.min.js"></script>
+<script src="/features.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

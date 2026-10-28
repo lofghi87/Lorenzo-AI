@@ -14,6 +14,7 @@ const attachmentsPreview = $('#attachmentsPreview');
 const imageModeBtn = $('#imageModeBtn');
 
 const STORE_KEY = 'lorenzo-ai-chats-v1';
+const PINNED_STORE_KEY = 'lorenzo-ai-pinned-v1';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_TOTAL_SIZE = 20 * 1024 * 1024;
 const MAX_FILES = 5;
@@ -35,6 +36,10 @@ let currentUser = null;
 let authReady = false;
 let selectedAttachments = [];
 let imageMode = false;
+let historyQuery = '';
+let showingPinned = false;
+let speechRecognition = null;
+let voiceIsListening = false;
 
 function id() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -72,39 +77,180 @@ function saveLocalChats() {
   }
 }
 
-function renderHistory() {
-  const h = $('#history');
-  if (!h) return;
-  h.replaceChildren();
+function pinnedStorageKey() {
+  return PINNED_STORE_KEY + ':' + (currentUser?.id || 'guest');
+}
 
-  chats.slice().reverse().forEach(c => {
+function loadPinnedChatIds() {
+  try {
+    const value = JSON.parse(localStorage.getItem(pinnedStorageKey()) || '[]');
+    return new Set(Array.isArray(value) ? value.filter(id => typeof id === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function savePinnedChatIds(ids) {
+  try {
+    localStorage.setItem(pinnedStorageKey(), JSON.stringify([...ids]));
+    return true;
+  } catch {
+    showToast('Non riesco a salvare i preferiti su questo dispositivo.');
+    return false;
+  }
+}
+
+function renderHistory() {
+  const history = $('#history');
+  if (!history) return;
+  history.replaceChildren();
+
+  const pinned = loadPinnedChatIds();
+  const query = historyQuery.trim();
+  const visibleChats = chats
+    .filter(chat => (!showingPinned || pinned.has(chat.id)) &&
+      LorenzoChatFeatures.matchesChat(chat, query))
+    .slice()
+    .reverse()
+    .sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)));
+
+  for (const chat of visibleChats) {
     const row = document.createElement('div');
     row.className = 'history-row';
 
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'history-item' + (c.id === activeId ? ' active' : '');
-    b.textContent = '◷ ' + (c.title || 'Nuova conversazione');
-    b.title = c.title || '';
-    b.onclick = () => openChat(c.id);
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'history-item' + (chat.id === activeId ? ' active' : '');
+    open.textContent = (pinned.has(chat.id) ? '★ ' : '◷ ') + (chat.title || 'Nuova conversazione');
+    open.title = chat.title || 'Nuova conversazione';
+    open.onclick = () => openChat(chat.id);
+
+    const actions = document.createElement('div');
+    actions.className = 'history-actions';
+
+    const pin = document.createElement('button');
+    pin.type = 'button';
+    pin.className = 'history-action pin-chat';
+    pin.textContent = pinned.has(chat.id) ? '★' : '☆';
+    pin.title = pinned.has(chat.id) ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti (su questo dispositivo)';
+    pin.setAttribute('aria-label', pin.title + ': ' + (chat.title || 'Nuova conversazione'));
+    pin.setAttribute('aria-pressed', String(pinned.has(chat.id)));
+    pin.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const next = loadPinnedChatIds();
+      if (next.has(chat.id)) next.delete(chat.id);
+      else next.add(chat.id);
+      if (savePinnedChatIds(next)) renderHistory();
+    };
+
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'history-action rename-chat';
+    rename.textContent = '✎';
+    rename.title = 'Rinomina conversazione';
+    rename.setAttribute('aria-label', 'Rinomina: ' + (chat.title || 'Nuova conversazione'));
+    rename.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      void renameChat(chat.id);
+    };
+
+    const exportButton = document.createElement('button');
+    exportButton.type = 'button';
+    exportButton.className = 'history-action export-chat';
+    exportButton.textContent = '↓';
+    exportButton.title = 'Esporta conversazione in Markdown';
+    exportButton.setAttribute('aria-label', 'Esporta: ' + (chat.title || 'Nuova conversazione'));
+    exportButton.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      exportChat(chat.id);
+    };
 
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'history-delete';
     remove.textContent = '×';
     remove.title = 'Elimina conversazione';
-    remove.setAttribute('aria-label', 'Elimina conversazione: ' + (c.title || 'Nuova conversazione'));
+    remove.setAttribute('aria-label', 'Elimina conversazione: ' + (chat.title || 'Nuova conversazione'));
     remove.onclick = event => {
       event.preventDefault();
       event.stopPropagation();
-      deleteChat(c.id);
+      deleteChat(chat.id);
     };
 
-    row.append(b, remove);
-    h.append(row);
-  });
+    actions.append(pin, rename, exportButton, remove);
+    row.append(open, actions);
+    history.append(row);
+  }
+
+  const empty = $('#historyEmpty');
+  if (empty) {
+    empty.hidden = visibleChats.length > 0;
+    empty.textContent = chats.length === 0
+      ? 'Le tue conversazioni appariranno qui.'
+      : showingPinned && pinned.size === 0
+        ? 'Non hai ancora conversazioni preferite.'
+        : query
+          ? 'Nessuna conversazione corrisponde alla ricerca.'
+          : 'Nessuna conversazione da mostrare.';
+  }
 }
 
+async function renameChat(chatId) {
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat || busy) return;
+  const updatedTitle = window.prompt('Nuovo titolo (massimo 60 caratteri):', chat.title || '');
+  if (updatedTitle === null) return;
+  const title = updatedTitle.trim().slice(0, 60);
+  if (!title) {
+    showToast('Il titolo non può essere vuoto.');
+    return;
+  }
+  if (title === chat.title) return;
+
+  if (currentUser && chat.dbId) {
+    const { error } = await supabaseClient.from('chats').update({ title })
+      .eq('id', chat.dbId)
+      .eq('user_id', currentUser.id);
+    if (error) {
+      console.error('Errore rinomina chat:', error);
+      showToast('Non sono riuscito a rinominare la conversazione.');
+      return;
+    }
+  }
+
+  chat.title = title;
+  if (!currentUser) saveLocalChats();
+  renderHistory();
+  showToast('Conversazione rinominata.');
+}
+
+function exportChat(chatId) {
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat) {
+    showToast('Conversazione non trovata.');
+    return;
+  }
+  try {
+    const markdown = LorenzoChatFeatures.toMarkdown(chat);
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = LorenzoChatFeatures.safeFilename(chat.title) + '.md';
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('Esportazione avviata. Il file contiene il testo e i nomi degli allegati.');
+  } catch (error) {
+    console.error('Errore esportazione chat:', error);
+    showToast('Non sono riuscito a esportare la conversazione.');
+  }
+}
 async function deleteChat(chatId) {
   const chat = chats.find(item => item.id === chatId);
   if (!chat || busy) return;
@@ -136,6 +282,9 @@ async function deleteChat(chatId) {
   }
 
   chats = chats.filter(item => item.id !== chatId);
+  const pinnedIds = loadPinnedChatIds();
+  pinnedIds.delete(chatId);
+  savePinnedChatIds(pinnedIds);
   if (!currentUser) saveLocalChats();
 
   if (activeId === chatId) {
@@ -1242,6 +1391,7 @@ async function sendMessage(text) {
 /* Eventi del compositore. */
 $('#chatForm').addEventListener('submit', event => {
   event.preventDefault();
+  if (voiceIsListening) speechRecognition?.stop();
   sendMessage(promptEl.value);
 });
 
@@ -1303,6 +1453,106 @@ $('#closeSidebar').onclick = () => $('#sidebar').classList.remove('open');
 document.querySelectorAll('.suggestion').forEach(button => {
   button.addEventListener('click', () => sendMessage(button.dataset.prompt));
 });
+
+$('#historySearch')?.addEventListener('input', event => {
+  historyQuery = event.target.value || '';
+  renderHistory();
+});
+
+$('#clearHistorySearch')?.addEventListener('click', () => {
+  historyQuery = '';
+  const search = $('#historySearch');
+  if (search) {
+    search.value = '';
+    search.focus();
+  }
+  renderHistory();
+});
+
+$('#pinnedFilterBtn')?.addEventListener('click', event => {
+  showingPinned = !showingPinned;
+  event.currentTarget.setAttribute('aria-pressed', String(showingPinned));
+  event.currentTarget.classList.toggle('active', showingPinned);
+  event.currentTarget.textContent = showingPinned ? 'Tutte' : '★ Preferite';
+  renderHistory();
+});
+
+document.querySelectorAll('.prompt-template').forEach(button => {
+  button.addEventListener('click', () => {
+    promptEl.value = button.dataset.prompt || '';
+    resizeInput();
+    promptEl.focus();
+    button.closest('details')?.removeAttribute('open');
+  });
+});
+
+function setVoiceButtonState(listening) {
+  voiceIsListening = listening;
+  const button = $('#voiceInputBtn');
+  if (!button) return;
+  button.classList.toggle('active', listening);
+  button.setAttribute('aria-pressed', String(listening));
+  button.title = listening ? 'Interrompi dettatura' : 'Dettatura vocale';
+  button.setAttribute('aria-label', button.title);
+  button.innerHTML = listening ? '<span aria-hidden="true">■</span><span>Stop</span>' : '<span aria-hidden="true">🎙</span><span>Voce</span>';
+}
+
+function startVoiceInput() {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) {
+    showToast('La dettatura vocale non è supportata da questo browser.');
+    return;
+  }
+  if (voiceIsListening) {
+    speechRecognition?.stop();
+    return;
+  }
+
+  try {
+    speechRecognition = new Recognition();
+    speechRecognition.lang = 'it-IT';
+    speechRecognition.continuous = false;
+    speechRecognition.interimResults = false;
+    speechRecognition.maxAlternatives = 1;
+    speechRecognition.onresult = event => {
+      const transcript = Array.from(event.results || [])
+        .filter(result => result.isFinal)
+        .map(result => result[0]?.transcript || '')
+        .join(' ')
+        .trim();
+      if (!transcript) return;
+      promptEl.value = LorenzoChatFeatures.appendTranscript(
+        promptEl.value,
+        transcript,
+        Number(promptEl.maxLength) || 12000
+      );
+      resizeInput();
+      promptEl.focus();
+    };
+    speechRecognition.onerror = event => {
+      const messages = {
+        'not-allowed': 'Consenti l’accesso al microfono nelle impostazioni del browser.',
+        'service-not-allowed': 'Il browser non consente la dettatura vocale.',
+        'no-speech': 'Non ho rilevato parole. Riprova.',
+        'audio-capture': 'Non trovo un microfono disponibile.'
+      };
+      if (event.error !== 'aborted') showToast(messages[event.error] || 'Dettatura non riuscita. Riprova.');
+    };
+    speechRecognition.onend = () => {
+      setVoiceButtonState(false);
+      speechRecognition = null;
+    };
+    speechRecognition.start();
+    setVoiceButtonState(true);
+  } catch (error) {
+    setVoiceButtonState(false);
+    speechRecognition = null;
+    showToast('Non riesco ad avviare la dettatura. Riprova.');
+  }
+}
+
+$('#voiceInputBtn')?.addEventListener('click', startVoiceInput);
+
 
 async function refreshImageUsage() {
   const count = $('#imageUsageCount');
@@ -1449,7 +1699,10 @@ async function deleteAccount() {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || 'Eliminazione account non riuscita.');
 
-    try { localStorage.removeItem(STORE_KEY); } catch {}
+    try {
+      localStorage.removeItem(STORE_KEY);
+      localStorage.removeItem(pinnedStorageKey());
+    } catch {}
     chats = [];
     activeId = null;
     await supabaseClient.auth.signOut();
