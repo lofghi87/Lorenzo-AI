@@ -534,6 +534,9 @@ module.exports = async function handler(req, res) {
     if (accessToken) {
       userId = await verifyUser(accessToken);
     }
+    const memoryPrompt = userId
+      ? await loadUserMemoryPrompt(userId, serviceKey)
+      : '';
 
     if (hasStorageAttachments && !userId) {
       return res.status(401).json({
