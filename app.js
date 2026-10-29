@@ -49,6 +49,14 @@ function current() {
   return chats.find(c => c.id === activeId);
 }
 
+/* Gestisce la schermata iniziale sia con hidden sia con display inline,
+   così resta nascosta anche se una regola CSS o una cache è obsoleta. */
+function setWelcomeVisible(visible) {
+  if (!welcome) return;
+  welcome.hidden = !visible;
+  welcome.style.display = visible ? '' : 'none';
+}
+
 function showToast(msg) {
   const t = $('#toast');
   if (!t) return;
@@ -319,7 +327,7 @@ function clearSelectedAttachments() {
 function newChat() {
   activeId = null;
   messagesEl.replaceChildren();
-  welcome.hidden = false;
+  setWelcomeVisible(true);
   promptEl.value = '';
   resetImageMode();
   clearSelectedAttachments();
@@ -788,7 +796,7 @@ async function handleAuthChange(session) {
   chats = [];
   activeId = null;
   messagesEl.replaceChildren();
-  welcome.hidden = false;
+  setWelcomeVisible(true);
 
   if (currentUser) {
     $('#connectionStatus').textContent = 'Account connesso';
@@ -1073,7 +1081,7 @@ async function generateImage(promptText) {
   const userContent = 'Crea un’immagine: ' + promptText;
   clearStaleRegenerateActions();
   c.messages.push({ role: 'user', content: userContent });
-  welcome.hidden = true;
+  setWelcomeVisible(false);
   addMessage('user', userContent);
   renderHistory();
   promptEl.value = '';
@@ -1168,7 +1176,7 @@ async function regenerateResponse(chatId, messageIndex) {
   chat.messages.pop();
   if (activeId !== chatId) activeId = chatId;
   openChat(chatId);
-  welcome.hidden = false;
+  setWelcomeVisible(true);
   busy = true;
   resizeInput();
 
@@ -1282,7 +1290,7 @@ async function sendMessage(text) {
 
   clearStaleRegenerateActions();
   c.messages.push(userMessage);
-  welcome.hidden = true;
+  setWelcomeVisible(false);
   addMessage(
     'user',
     text || (attachments.length ? 'Analizza gli allegati.' : ''),
