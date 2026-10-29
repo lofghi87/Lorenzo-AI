@@ -92,9 +92,14 @@ async function readProfile(userId, serviceKey) {
     signal: AbortSignal.timeout(12000)
   });
   if (!response.ok) {
-    const error = new Error(response.status === 404
+    const detail = await response.text().catch(() => '');
+    const missingToggle = response.status === 400 && /memory_enabled|column/i.test(detail);
+    const message = response.status === 404
       ? 'La tabella del profilo memoria non è ancora configurata. Applica la migration Supabase.'
-      : 'Non riesco a caricare il profilo personale. Riprova più tardi.');
+      : missingToggle
+        ? 'Manca la migration per l’interruttore della memoria. Esegui 202610290003_user_memory_enabled.sql nel SQL Editor di Supabase.'
+        : 'Non riesco a caricare il profilo personale. Riprova più tardi.';
+    const error = new Error(message);
     error.statusCode = 503;
     throw error;
   }
@@ -134,7 +139,7 @@ async function saveProfile(userId, serviceKey, profileText, memoryEnabled) {
         updated_at: rows[0].updated_at || null,
         memory_enabled: rows[0].memory_enabled !== false
       }
-    : { profile_text: String(profileText || ''), updated_at: new Date().toISOString(), memory_enabled: Boolean(memoryEnabled) };
+    : { profile_text: String(profileText || ''), updated_at: new Date().toISOString(), memory_enabled: typeof memoryEnabled === 'boolean' ? memoryEnabled : true };
 }
 
 async function readRecentUserContext(userId, serviceKey) {
