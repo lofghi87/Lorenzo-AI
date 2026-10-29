@@ -30,11 +30,13 @@ Le migrazioni SQL in `supabase/migrations/` vanno eseguite nel **SQL Editor** de
 1. `202610270001_image_generation_daily_limits.sql` — contatore immagini giornaliero.
 2. `202610270002_ai_chat_daily_limits.sql` — contatore persistente delle richieste chat per account o visitatore anonimo.
 3. `202610270003_private_chat_and_storage_policies.sql` — policy di accesso alla cronologia e agli allegati privati.
-4. `202610290001_user_memories.sql` — tabella privata della memoria personale e policy Row Level Security.
+4. `202610290001_user_memories.sql` — tabella privata delle vecchie note di memoria e policy Row Level Security.
+5. `202610290002_user_memory_profiles.sql` — profilo riassuntivo personale.
+6. `202610290003_user_memory_enabled.sql` — preferenza persistente per attivare o disattivare la memoria.
 
-La memoria richiede l'applicazione della quarta migrazione. Gli utenti autenticati possono salvare fino a 30 note, ciascuna di massimo 400 caratteri, con il comando `Ricorda che ...`; `Dimentica che ...` rimuove una nota corrispondente e `Dimentica tutte le memorie` cancella l'intero elenco. Le note sono salvate solo su richiesta esplicita, possono essere gestite dalle Impostazioni e non sono disponibili agli utenti senza account. Evita di salvare password, chiavi API e dati molto sensibili.
+Per usare la memoria, il riepilogo generato dall'AI e l'interruttore attiva/disattiva, applica le migration quarta, quinta e sesta. Il riepilogo viene costruito dal profilo già salvato, dalle note precedenti e dai messaggi recenti dell'utente nelle sue chat. Puoi chiedere all'AI di correggere o dimenticare un dettaglio; “Elimina e disattiva la memoria” rimuove il profilo e le vecchie note e spegne la memoria. Disattivare la memoria senza eliminarla conserva il profilo ma impedisce al backend di usarlo o aggiornarlo nelle nuove risposte. La memoria è disponibile solo agli utenti autenticati. Evita di salvare password, chiavi API e dati molto sensibili.
 
-La seconda migrazione è necessaria per i limiti persistenti e per il pannello di utilizzo chat. Senza account sono consentite al massimo 5 richieste al giorno e 3 ogni 15 minuti; con account restano 40 richieste al giorno. Se la tabella non è stata creata, l'API usa temporaneamente limiti in memoria per non bloccare del tutto il servizio, ma il contatore non è persistente tra tutte le istanze/serverless e il pannello mostra un errore. Prima di condividere il sito pubblicamente, applica tutte e tre le migrazioni e verifica il risultato.
+La seconda migrazione è necessaria per i limiti persistenti e per il pannello di utilizzo chat. Senza account sono consentite al massimo 5 richieste al giorno e 3 ogni 15 minuti; con account restano 40 richieste al giorno. Se la tabella non è stata creata, l'API usa temporaneamente limiti in memoria per non bloccare del tutto il servizio, ma il contatore non è persistente tra tutte le istanze/serverless e il pannello mostra un errore. Prima di condividere il sito pubblicamente, applica tutte e sei le migrazioni e verifica il risultato.
 
 ## Test
 
@@ -50,7 +52,7 @@ GitHub Actions esegue i test su ogni pull request verso `main` e a ogni push su 
 
 ## Checklist prima di invitare il pubblico
 
-1. Applica le tre migrazioni SQL sopra, nell'ordine indicato.
+1. Applica tutte e sei le migrazioni SQL sopra, nell'ordine indicato.
 2. Verifica su Vercel che le quattro variabili d'ambiente server-side siano impostate; dopo ogni modifica delle variabili, esegui un nuovo deployment.
 3. La terza migration ricrea le policy della tabella `chats` in modo che ogni utente legga e modifichi soltanto le proprie conversazioni e aggiunge policy per il bucket `lorenzo-attachments`. Prima di eseguirla, controlla le policy già presenti su `storage.objects`: rimuovi manualmente eventuali policy generiche troppo permissive che si applicano a tutti i bucket, perché la tabella Storage è condivisa nel progetto Supabase. Il bucket `lorenzo-attachments` deve essere privato e gli oggetti devono trovarsi in cartelle che iniziano con l'ID del proprietario.
 4. Completa e fai controllare le pagine `privacy.html` e `terms.html`: sono bozze iniziali, non un parere legale. Prima del lancio serve un canale di contatto adatto a un servizio pubblico e devono essere verificate le condizioni dei provider AI.
