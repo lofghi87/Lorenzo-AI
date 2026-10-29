@@ -321,21 +321,33 @@
       <button type="button" class="setting-tag setting-theme-btn" id="settingsThemeBtn">Usa tema chiaro</button>
     </div>
 
-    <section class="memory-section" id="memorySection" aria-labelledby="memoryHeading">
+    <section class="memory-section memory-profile-section" id="memorySection" aria-labelledby="memoryHeading">
       <div class="memory-section-head">
-        <div><b id="memoryHeading">Memoria personale</b><small>Note che Lorenzo AI può ricordare nelle prossime conversazioni.</small></div>
-        <span class="memory-private-label">Privata</span>
+        <div>
+          <span class="memory-eyebrow">PERSONALIZZAZIONE</span>
+          <b id="memoryHeading">Memoria</b>
+          <small>Un profilo unico che si aggiorna nel tempo dalle informazioni utili che condividi.</small>
+        </div>
+        <span class="memory-private-label">Solo tu</span>
       </div>
-      <p class="memory-note">Salva solo ciò che scegli esplicitamente. Evita password, chiavi, dati bancari e informazioni molto sensibili.</p>
-      <div class="memory-add-row">
-        <label for="memoryInput" class="visually-hidden">Nuova nota da ricordare</label>
-        <input id="memoryInput" type="text" maxlength="400" placeholder="Es. Preferisco risposte brevi e con esempi">
-        <button type="button" class="primary-btn memory-save-btn" id="memorySaveBtn">Salva</button>
+
+      <div class="memory-profile-explainer">
+        <span class="memory-profile-symbol" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5A8.5 8.5 0 0 0 12 3.5Z"/><path d="M8.5 10h7M8.5 13h5M8.5 16h3"/></svg>
+        </span>
+        <p><b>Un riepilogo, non una lista di frasi.</b><br>Preferenze, interessi e progetti vengono organizzati in un testo coerente. Puoi correggerlo o cancellarlo in qualsiasi momento.</p>
       </div>
-      <p id="memoryStatus" class="memory-status" aria-live="polite">Caricamento memoria…</p>
-      <div id="memoryList" class="memory-list"></div>
-      <button type="button" class="memory-clear-btn" id="memoryClearBtn">Cancella tutte le memorie</button>
+
+      <label class="memory-profile-label" for="memoryProfileInput">Il tuo profilo personale</label>
+      <textarea id="memoryProfileInput" class="memory-profile-input" maxlength="8000" rows="8" placeholder="Il tuo profilo personale comparirà qui man mano che Lorenzo AI impara dalle conversazioni."></textarea>
+      <div class="memory-profile-footer">
+        <small id="memoryProfileCount">0 / 8.000</small>
+        <button type="button" class="primary-btn memory-save-btn" id="memorySaveBtn">Salva modifiche</button>
+      </div>
+      <p id="memoryStatus" class="memory-status" aria-live="polite">Caricamento del profilo…</p>
+      <button type="button" class="memory-clear-btn" id="memoryClearBtn" hidden>Cancella la memoria</button>
       <button type="button" class="primary-btn memory-login-btn" id="memoryLoginBtn" hidden>Accedi per attivare la memoria</button>
+      <p class="memory-privacy-footnote">La memoria è associata al tuo account. Non dovrebbe contenere password, credenziali o informazioni altamente sensibili. Le informazioni possono essere incomplete: controlla e correggi il profilo quando vuoi.</p>
     </section>
 
     <section class="usage-card" aria-labelledby="imageUsageHeading">
