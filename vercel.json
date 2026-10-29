@@ -33,7 +33,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!api/|sitemap\\.xml$|robots\\.txt$|style\\.css$|polish\\.css$|app\\.js$|chat\\.js$|status\\.js$|login\\.html$|login\\.js$|privacy\\.html$|terms\\.html$|lorenzo-ai-logo\\.png$|favicon\\.svg$|manifest\\.json$).*)",
+      "source": "/((?!api/|sitemap\\.xml$|robots\\.txt$|style\\.css$|polish\\.css$|app-pwa\\.css$|pwa\\.js$|sw\\.js$|app\\.js$|chat\\.js$|status\\.js$|login\\.html$|login\\.js$|privacy\\.html$|terms\\.html$|lorenzo-ai-logo\\.png$|favicon\\.svg$|manifest\\.json$).*)",
       "destination": "/index.html"
     }
   ]
