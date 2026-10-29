@@ -1,9 +1,22 @@
+const { createHash } = require('crypto');
+
 const DAILY_CHAT_LIMIT = 40;
+const GUEST_CHAT_LIMIT = 5;
 const SUPABASE_URL = 'https://bknkgctmpgiuxvahbbzs.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_rZEaUwMU4CCl7kUPdUlvuw_cuX2n9hB';
 
+function guestClientKey(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean);
+  const clientIp = String(forwarded[forwarded.length - 1] || 'unknown').slice(0, 100);
+  return 'anon:' + createHash('sha256').update(clientIp).digest('hex');
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Vary', 'Authorization');
 
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
@@ -13,31 +26,36 @@ module.exports = async function handler(req, res) {
   const authorization = String(req.headers.authorization || '');
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   const accessToken = match ? match[1].trim() : '';
-  if (!accessToken) {
-    return res.status(401).json({ error: 'Accedi per visualizzare il limite della chat.' });
-  }
-
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey) {
     return res.status(503).json({ error: 'Configurazione utilizzo chat non disponibile.' });
   }
 
   try {
-    const authResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: {
-        apikey: SUPABASE_PUBLISHABLE_KEY,
-        Authorization: 'Bearer ' + accessToken
-      },
-      signal: AbortSignal.timeout(15000)
-    });
+    let clientKey;
+    let guest = false;
 
-    if (!authResponse.ok) {
-      return res.status(401).json({ error: 'Sessione scaduta. Accedi nuovamente.' });
-    }
+    if (accessToken) {
+      const authResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: {
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          Authorization: 'Bearer ' + accessToken
+        },
+        signal: AbortSignal.timeout(15000)
+      });
 
-    const user = await authResponse.json();
-    if (!user?.id) {
-      return res.status(401).json({ error: 'Account non verificabile.' });
+      if (!authResponse.ok) {
+        return res.status(401).json({ error: 'Sessione scaduta. Accedi nuovamente.' });
+      }
+
+      const user = await authResponse.json();
+      if (!user?.id) {
+        return res.status(401).json({ error: 'Account non verificabile.' });
+      }
+      clientKey = user.id;
+    } else {
+      clientKey = guestClientKey(req);
+      guest = true;
     }
 
     const now = new Date();
@@ -50,8 +68,8 @@ module.exports = async function handler(req, res) {
 
     const query = new URLSearchParams({
       select: 'request_count',
-      client_key: `eq.${user.id}`,
-      usage_date: `eq.${todayUtc}`,
+      client_key: 'eq.' + clientKey,
+      usage_date: 'eq.' + todayUtc,
       limit: '1'
     });
 
@@ -74,12 +92,14 @@ module.exports = async function handler(req, res) {
     }
 
     const rows = await usageResponse.json();
-    const used = Math.max(0, Math.min(DAILY_CHAT_LIMIT, Number(rows?.[0]?.request_count || 0)));
+    const limit = guest ? GUEST_CHAT_LIMIT : DAILY_CHAT_LIMIT;
+    const used = Math.max(0, Math.min(limit, Number(rows?.[0]?.request_count || 0)));
 
     return res.status(200).json({
-      limit: DAILY_CHAT_LIMIT,
+      limit,
       used,
-      remaining: Math.max(0, DAILY_CHAT_LIMIT - used),
+      remaining: Math.max(0, limit - used),
+      guest,
       resetsAt
     });
   } catch (error) {

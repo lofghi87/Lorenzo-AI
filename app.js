@@ -121,7 +121,8 @@ function renderHistory() {
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'history-item' + (chat.id === activeId ? ' active' : '');
-    open.textContent = (pinned.has(chat.id) ? '★ ' : '◷ ') + (chat.title || 'Nuova conversazione');
+    open.textContent = chat.title || 'Nuova conversazione';
+    open.classList.toggle('pinned', pinned.has(chat.id));
     open.title = chat.title || 'Nuova conversazione';
     open.onclick = () => openChat(chat.id);
 
@@ -131,7 +132,8 @@ function renderHistory() {
     const pin = document.createElement('button');
     pin.type = 'button';
     pin.className = 'history-action pin-chat';
-    pin.textContent = pinned.has(chat.id) ? '★' : '☆';
+    pin.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg> ';
+    pin.classList.toggle('pinned', pinned.has(chat.id));
     pin.title = pinned.has(chat.id) ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti (su questo dispositivo)';
     pin.setAttribute('aria-label', pin.title + ': ' + (chat.title || 'Nuova conversazione'));
     pin.setAttribute('aria-pressed', String(pinned.has(chat.id)));
@@ -147,7 +149,7 @@ function renderHistory() {
     const rename = document.createElement('button');
     rename.type = 'button';
     rename.className = 'history-action rename-chat';
-    rename.textContent = '✎';
+    rename.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5M4 20l4.2-.9L19 8.3a2.1 2.1 0 0 0-3-3L5.2 16.1z"/></svg>';
     rename.title = 'Rinomina conversazione';
     rename.setAttribute('aria-label', 'Rinomina: ' + (chat.title || 'Nuova conversazione'));
     rename.onclick = event => {
@@ -159,7 +161,7 @@ function renderHistory() {
     const exportButton = document.createElement('button');
     exportButton.type = 'button';
     exportButton.className = 'history-action export-chat';
-    exportButton.textContent = '↓';
+    exportButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 20h14"/></svg>';
     exportButton.title = 'Esporta conversazione in Markdown';
     exportButton.setAttribute('aria-label', 'Esporta: ' + (chat.title || 'Nuova conversazione'));
     exportButton.onclick = event => {
@@ -412,7 +414,7 @@ function addMessage(role, content, scroll = true, attachmentNames = []) {
 
     attachmentNames.forEach(name => {
       const chip = document.createElement('div');
-      chip.textContent = '📎 ' + name;
+      chip.textContent = name;
       chip.style.cssText =
         'font-size:12px;padding:6px 9px;border-radius:10px;' +
         'background:rgba(127,127,127,.15);overflow-wrap:anywhere';
@@ -1473,7 +1475,7 @@ $('#pinnedFilterBtn')?.addEventListener('click', event => {
   showingPinned = !showingPinned;
   event.currentTarget.setAttribute('aria-pressed', String(showingPinned));
   event.currentTarget.classList.toggle('active', showingPinned);
-  event.currentTarget.textContent = showingPinned ? 'Tutte' : '★ Preferite';
+  event.currentTarget.textContent = showingPinned ? 'Tutte' : 'Preferite';
   renderHistory();
 });
 
@@ -1494,7 +1496,7 @@ function setVoiceButtonState(listening) {
   button.setAttribute('aria-pressed', String(listening));
   button.title = listening ? 'Interrompi dettatura' : 'Dettatura vocale';
   button.setAttribute('aria-label', button.title);
-  button.innerHTML = listening ? '<span aria-hidden="true">■</span><span>Stop</span>' : '<span aria-hidden="true">🎙</span><span>Voce</span>';
+  button.innerHTML = listening ? '<span aria-hidden="true">■</span><span>Stop</span>' : '<svg viewBox="0 0 24 24" aria-hidden="true" class="tool-icon"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v3M8 22h8"/></svg><span>Voce</span>';
 }
 
 function startVoiceInput() {
@@ -1627,39 +1629,33 @@ async function refreshChatUsage() {
   const refresh = $('#refreshChatUsageBtn');
   if (!count || !fill || !meter || !reset || !detail) return;
 
-  if (!currentUser) {
-    count.textContent = '—';
-    fill.style.width = '0%';
-    meter.setAttribute('aria-valuenow', '0');
-    detail.textContent = 'Accedi per vedere il contatore del tuo account.';
-    reset.textContent = 'Le chat senza account hanno limiti temporanei più bassi.';
-    return;
-  }
-
   if (refresh) refresh.disabled = true;
   detail.textContent = 'Caricamento utilizzo…';
-
   try {
-    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
-    const accessToken = sessionData?.session?.access_token;
-    if (sessionError || !accessToken) throw new Error('Sessione scaduta. Accedi nuovamente.');
-
-    const response = await fetch('/api/chat-quota', {
-      headers: { Authorization: 'Bearer ' + accessToken }
-    });
+    const headers = {};
+    if (currentUser) {
+      const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (sessionError || !accessToken) throw new Error('Sessione scaduta. Accedi nuovamente.');
+      headers.Authorization = 'Bearer ' + accessToken;
+    }
+    const response = await fetch('/api/chat-quota', { headers });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'Limite chat non disponibile.');
 
-    const limit = Math.max(1, Number(data.limit) || 40);
+    const limit = Math.max(1, Number(data.limit) || (currentUser ? 40 : 5));
     const used = Math.max(0, Math.min(limit, Number(data.used) || 0));
     const remaining = Math.max(0, Math.min(limit, Number(data.remaining) || 0));
     count.textContent = remaining + ' di ' + limit;
     fill.style.width = (used / limit * 100) + '%';
     meter.setAttribute('aria-valuenow', String(used));
     meter.setAttribute('aria-valuemax', String(limit));
-    detail.textContent = used + ' ' + (used === 1 ? 'richiesta usata' : 'richieste usate') + ' oggi (UTC).';
-
-    if (data.resetsAt) {
+    detail.textContent = data.guest
+      ? used + ' di ' + limit + ' richieste gratuite usate oggi senza account.'
+      : used + ' ' + (used === 1 ? 'richiesta usata' : 'richieste usate') + ' oggi (UTC).';
+    if (data.guest) {
+      reset.textContent = 'Accedi per avere 40 richieste al giorno e salvare la memoria personale.';
+    } else if (data.resetsAt) {
       reset.textContent = 'Si azzera alle ' + new Date(data.resetsAt).toLocaleTimeString('it-IT', {
         hour: '2-digit', minute: '2-digit'
       }) + ' ora locale.';
@@ -1671,12 +1667,11 @@ async function refreshChatUsage() {
     fill.style.width = '0%';
     meter.setAttribute('aria-valuenow', '0');
     detail.textContent = error.message || 'Impossibile caricare il limite chat.';
-    reset.textContent = 'Se il problema continua, controlla la migration Supabase inclusa nel progetto.';
+    reset.textContent = 'Il contatore non è disponibile al momento. Riprova più tardi.';
   } finally {
     if (refresh) refresh.disabled = false;
   }
 }
-
 async function deleteAccount() {
   if (!currentUser || busy) return;
   const accepted = window.confirm(

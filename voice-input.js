@@ -21,7 +21,7 @@
     button.setAttribute('aria-label', button.title);
     button.innerHTML = active
       ? '<span aria-hidden="true">■</span><span>Stop</span>'
-      : '<span aria-hidden="true">🎙</span><span>Voce</span>';
+      : '<svg viewBox="0 0 24 24" aria-hidden="true" class="tool-icon"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v3M8 22h8"/></svg><span>Voce</span>';
   }
 
   function notify(message) {
