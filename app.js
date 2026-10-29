@@ -121,7 +121,8 @@ function renderHistory() {
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'history-item' + (chat.id === activeId ? ' active' : '');
-    open.textContent = (pinned.has(chat.id) ? '★ ' : '◷ ') + (chat.title || 'Nuova conversazione');
+    open.textContent = chat.title || 'Nuova conversazione';
+    open.classList.toggle('pinned', pinned.has(chat.id));
     open.title = chat.title || 'Nuova conversazione';
     open.onclick = () => openChat(chat.id);
 
@@ -131,7 +132,8 @@ function renderHistory() {
     const pin = document.createElement('button');
     pin.type = 'button';
     pin.className = 'history-action pin-chat';
-    pin.textContent = pinned.has(chat.id) ? '★' : '☆';
+    pin.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg> ';
+    pin.classList.toggle('pinned', pinned.has(chat.id));
     pin.title = pinned.has(chat.id) ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti (su questo dispositivo)';
     pin.setAttribute('aria-label', pin.title + ': ' + (chat.title || 'Nuova conversazione'));
     pin.setAttribute('aria-pressed', String(pinned.has(chat.id)));
@@ -147,7 +149,7 @@ function renderHistory() {
     const rename = document.createElement('button');
     rename.type = 'button';
     rename.className = 'history-action rename-chat';
-    rename.textContent = '✎';
+    rename.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5M4 20l4.2-.9L19 8.3a2.1 2.1 0 0 0-3-3L5.2 16.1z"/></svg>';
     rename.title = 'Rinomina conversazione';
     rename.setAttribute('aria-label', 'Rinomina: ' + (chat.title || 'Nuova conversazione'));
     rename.onclick = event => {
@@ -159,7 +161,7 @@ function renderHistory() {
     const exportButton = document.createElement('button');
     exportButton.type = 'button';
     exportButton.className = 'history-action export-chat';
-    exportButton.textContent = '↓';
+    exportButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 20h14"/></svg>';
     exportButton.title = 'Esporta conversazione in Markdown';
     exportButton.setAttribute('aria-label', 'Esporta: ' + (chat.title || 'Nuova conversazione'));
     exportButton.onclick = event => {
@@ -1473,7 +1475,7 @@ $('#pinnedFilterBtn')?.addEventListener('click', event => {
   showingPinned = !showingPinned;
   event.currentTarget.setAttribute('aria-pressed', String(showingPinned));
   event.currentTarget.classList.toggle('active', showingPinned);
-  event.currentTarget.textContent = showingPinned ? 'Tutte' : '★ Preferite';
+  event.currentTarget.textContent = showingPinned ? 'Tutte' : 'Preferite';
   renderHistory();
 });
 
