@@ -92,7 +92,7 @@
         <span class="visually-hidden">Cerca nelle conversazioni</span>
         <input id="historySearch" type="search" maxlength="100" placeholder="Cerca nelle chat…" autocomplete="off">
       </label>
-      <button id="pinnedFilterBtn" class="pinned-filter" type="button" aria-pressed="false">★ Preferite</button>
+      <button id="pinnedFilterBtn" class="pinned-filter" type="button" aria-pressed="false">Preferite</button>
     </div>
     <p id="historyEmpty" class="history-empty" aria-live="polite" hidden></p>
     <div id="history" class="history"></div>
@@ -116,7 +116,9 @@
         class="icon-btn menu-btn"
         id="menuBtn"
         aria-label="Apri menu"
-      >☰</button>
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
 
       <div class="model-pill">
         <span class="online-dot"></span>
@@ -158,7 +160,7 @@
             class="suggestion"
             data-prompt="Aiutami a creare un sito web moderno, passo dopo passo."
           >
-            <span class="suggestion-icon">⌘</span>
+            <span class="suggestion-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8 8 8M8 16l8-8M5 3v6M2 6h6M19 15v6m-3-3h6"/></svg></span>
             <span>
               <b>Costruiamo qualcosa</b>
               <small>Scrivi codice e crea progetti</small>
@@ -170,7 +172,7 @@
             class="suggestion"
             data-prompt="Spiegami un argomento difficile in modo semplice, con esempi."
           >
-            <span class="suggestion-icon">✎</span>
+            <span class="suggestion-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3zM8 7h8M8 11h8"/></svg></span>
             <span>
               <b>Impariamo insieme</b>
               <small>Spiegazioni chiare e pratiche</small>
@@ -182,7 +184,7 @@
             class="suggestion"
             data-prompt="Aiutami a trovare un'idea concreta per un progetto che posso realizzare con budget zero."
           >
-            <span class="suggestion-icon">✧</span>
+            <span class="suggestion-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg></span>
             <span>
               <b>Troviamo un'idea</b>
               <small>Trasforma un pensiero in un piano</small>
@@ -194,7 +196,7 @@
             class="suggestion"
             data-prompt="Organizza le mie attività in un piano semplice e realistico."
           >
-            <span class="suggestion-icon">▤</span>
+            <span class="suggestion-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>
             <span>
               <b>Organizziamo il lavoro</b>
               <small>Un passo alla volta</small>
@@ -250,7 +252,7 @@
               aria-pressed="false"
               title="Attiva la generazione di immagini"
             >
-              <span>✧</span> <span>Crea immagine</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" class="tool-icon"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg> <span>Crea immagine</span>
             </button>
 
             <details class="prompt-library">
@@ -299,7 +301,7 @@
   <form method="dialog" class="settings">
     <button class="dialog-close" aria-label="Chiudi">×</button>
 
-    <div class="welcome-icon small">⚙</div>
+    <div class="welcome-icon small"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 13.5a7.4 7.4 0 0 0 0-3l2-1.5-2-3.4-2.4 1a8.4 8.4 0 0 0-2.6-1.5L13.6 2h-3.2L10 5.1a8.4 8.4 0 0 0-2.6 1.5l-2.4-1-2 3.4 2 1.5a7.4 7.4 0 0 0 0 3l-2 1.5 2 3.4 2.4-1A8.4 8.4 0 0 0 10 19l.4 3h3.2l.4-3a8.4 8.4 0 0 0 2.6-1.5l2.4 1 2-3.4z"/></svg></div>
     <h2>Impostazioni</h2>
     <p>Personalizza il tuo spazio AI.</p>
 
