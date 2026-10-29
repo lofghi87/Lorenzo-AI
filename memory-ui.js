@@ -142,7 +142,6 @@
       renderHistory();
       if (activeId === chat.id) scrollBottom();
     }).catch(() => showToast('Nota salvata, ma non riesco a salvare la conferma nella chat.'));
-    addMessageActions(answer, chat.id, chat.messages.length - 1);
   }
 
   async function executeMemoryCommand(text, type, content) {
