@@ -13,28 +13,6 @@ const attachBtn = $('#attachBtn');
 const attachmentsPreview = $('#attachmentsPreview');
 const imageModeBtn = $('#imageModeBtn');
  
-// iOS può calcolare male l'altezza della web app aggiunta alla schermata Home.
-// In modalità standalone sincronizziamo il layout con la viewport realmente visibile,
-// così il campo del messaggio resta sul bordo inferiore anche dopo rotazione/tastiera.
-(function syncStandaloneViewport() {
-  const standalone = window.matchMedia?.('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true;
-  if (!standalone) return;
-
-  const update = () => {
-    const height = window.visualViewport?.height || window.innerHeight;
-    if (height > 0) {
-      document.documentElement.style.setProperty('--app-viewport-height', Math.round(height) + 'px');
-    }
-  };
-
-  update();
-  window.addEventListener('resize', update, { passive: true });
-  window.addEventListener('orientationchange', () => setTimeout(update, 120), { passive: true });
-  window.visualViewport?.addEventListener('resize', update, { passive: true });
-})();
-
-
 const STORE_KEY = 'lorenzo-ai-chats-v1';
 const PINNED_STORE_KEY = 'lorenzo-ai-pinned-v1';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
