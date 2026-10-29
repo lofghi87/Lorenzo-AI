@@ -108,14 +108,14 @@ async function readProfile(userId, serviceKey) {
     : { profile_text: '', updated_at: null, memory_enabled: true };
 }
 
-async function saveProfile(userId, serviceKey, profileText, memoryEnabled = true) {
+async function saveProfile(userId, serviceKey, profileText, memoryEnabled) {
   const response = await fetch(SUPABASE_URL + '/rest/v1/' + PROFILE_TABLE + '?on_conflict=user_id', {
     method: 'POST',
     headers: serviceHeaders(serviceKey, 'resolution=merge-duplicates,return=representation'),
     body: JSON.stringify({
       user_id: userId,
       profile_text: String(profileText || '').slice(0, MAX_PROFILE_LENGTH),
-      memory_enabled: Boolean(memoryEnabled),
+      ...(typeof memoryEnabled === 'boolean' ? { memory_enabled: memoryEnabled } : {}),
       updated_at: new Date().toISOString()
     }),
     signal: AbortSignal.timeout(12000)
@@ -242,7 +242,15 @@ async function generateProfile(userId, serviceKey, instruction = '') {
     throw error;
   }
 
-  return saveProfile(userId, serviceKey, profileText, true);
+  // Rileggi la preferenza prima del salvataggio: se l'utente ha disattivato
+  // la memoria mentre l'AI stava lavorando, non riattivarla né sovrascriverla.
+  const latest = await readProfile(userId, serviceKey);
+  if (!latest.memory_enabled) {
+    const error = new Error('La memoria è stata disattivata mentre il riepilogo veniva aggiornato. Il profilo non è stato modificato.');
+    error.statusCode = 409;
+    throw error;
+  }
+  return saveProfile(userId, serviceKey, profileText);
 }
 
 module.exports = async function handler(req, res) {
