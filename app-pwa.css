@@ -157,6 +157,10 @@ button { -webkit-appearance: none; }
   }
   .sidebar.open { transform: translateX(0); }
   .topbar {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    column-gap: 7px;
+    justify-content: stretch;
     flex-basis: 56px;
     min-height: 56px;
     padding-top: 0;
@@ -166,17 +170,39 @@ button { -webkit-appearance: none; }
     -webkit-backdrop-filter: blur(18px);
     backdrop-filter: blur(18px);
   }
+  .menu-btn { grid-column: 1; justify-self: start; }
   .model-pill {
+    position: static;
+    left: auto;
+    transform: none;
+    grid-column: 2;
+    justify-self: center;
     flex: 0 1 auto;
     min-width: 0;
-    margin-left: 8px;
-    margin-right: 8px;
+    max-width: 100%;
+    margin: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .top-actions { gap: 5px; }
-  .top-actions .icon-btn { width: 32px; height: 34px; }
+  .top-actions {
+    grid-column: 3;
+    display: flex;
+    flex: 0 0 auto;
+    min-width: 0;
+    max-width: 100%;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+    margin-left: 0;
+    justify-self: end;
+  }
+  .top-actions #pwaInstallButton,
+  .top-actions #accountBtn {
+    flex: 0 0 auto;
+    min-width: 0;
+    white-space: nowrap;
+  }
   #accountBtn, .profile {
     min-width: 66px;
     min-height: 34px;
@@ -232,38 +258,32 @@ button { -webkit-appearance: none; }
   .suggestion { padding: 8px; }
 }
 @media (display-mode: standalone) {
-  /* In iOS Home Screen la viewport CSS può essere più corta dell'area visibile.
-     Il compositore viene ancorato al bordo inferiore della viewport reale. */
-  .topbar {
-    padding-top: 0;
-    min-height: 56px;
-  }
-  .composer-wrap { padding-bottom: max(10px, var(--app-safe-bottom)); }
+  .topbar { padding-top: 0; }
 }
-@media (display-mode: standalone) and (max-width: 760px) {
-  .main { min-height: 0; }
-  .chat-area {
-    padding-bottom: calc(190px + var(--app-safe-bottom));
-    scroll-padding-bottom: calc(190px + var(--app-safe-bottom));
-  }
-  .composer-wrap {
-    position: fixed;
-    z-index: 25;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    padding: 8px max(9px, var(--app-safe-left)) max(10px, var(--app-safe-bottom));
-    background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--bg) 94%, transparent) 18%);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-  }
-  .composer-wrap .disclaimer {
-    margin-bottom: 0;
-    padding-bottom: 2px;
-  }
+body.is-standalone .topbar { padding-top: 0; }
+body.is-standalone .composer-wrap {
+  position: relative;
+  inset: auto;
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 850px;
+  margin: 0 auto;
+  padding-bottom: max(10px, var(--app-safe-bottom));
+  transform: none;
+}
+body.is-standalone .chat-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-bottom: 8px;
+  scroll-padding-bottom: 18px;
+}
+body.is-standalone .main {
+  height: var(--app-viewport-height);
+  min-height: 0;
+}
+html.is-standalone,
+html.is-standalone body {
+  overscroll-behavior: none;
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -278,4 +298,17 @@ button { -webkit-appearance: none; }
    Le regole display:flex di .welcome non devono annullare l'attributo hidden. */
 #welcome[hidden] {
   display: none !important;
+}
+
+@media (max-width: 380px) {
+  .topbar { grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 4px; }
+  .model-pill { gap: 4px; padding: 6px 7px; font-size: 10px; }
+  .top-actions { gap: 3px; }
+  .top-actions #accountBtn { padding: 0 8px; min-width: 58px; }
+  .top-actions #pwaInstallButton { padding: 0 7px; font-size: 10px; }
+}
+html.is-standalone,
+html.is-standalone body,
+html.is-standalone body * {
+  touch-action: pan-x pan-y;
 }
