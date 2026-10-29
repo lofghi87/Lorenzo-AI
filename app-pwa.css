@@ -247,3 +247,9 @@ button { -webkit-appearance: none; }
     transition-duration: .01ms !important;
   }
 }
+
+/* Nasconde davvero la schermata iniziale quando la chat contiene messaggi.
+   Le regole display:flex di .welcome non devono annullare l'attributo hidden. */
+#welcome[hidden] {
+  display: none !important;
+}
