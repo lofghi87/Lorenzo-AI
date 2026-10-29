@@ -132,12 +132,6 @@
       </div>
 
       <div class="top-actions">
-        <button class="icon-btn" id="memoryBtn" title="Memoria personale" aria-label="Apri memoria personale">
-<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5a3 3 0 0 0-5 2.2 3.5 3.5 0 0 0 .4 6.7A3.3 3.3 0 0 0 8 18.5h1M15 4.5a3 3 0 0 1 5 2.2 3.5 3.5 0 0 1-.4 6.7 3.3 3.3 0 0 1-3.6 5.1h-1M9 4.5a3 3 0 0 1 6 0v15a3 3 0 0 1-6 0zM9 9H7m8 0h2M9 14H7m8 0h2"/></svg>
-</button>
-<button class="icon-btn" id="themeBtn" title="Cambia tema" aria-label="Cambia tema">
-<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg>
-</button>
 
         <button
           class="profile"
@@ -303,129 +297,175 @@
 
 <div class="toast" id="toast" role="status"></div>
 
-<dialog id="settingsDialog">
-  <form method="dialog" class="settings">
-    <button class="dialog-close" aria-label="Chiudi">×</button>
-
-    <div class="welcome-icon small"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 13.5a7.4 7.4 0 0 0 0-3l2-1.5-2-3.4-2.4 1a8.4 8.4 0 0 0-2.6-1.5L13.6 2h-3.2L10 5.1a8.4 8.4 0 0 0-2.6 1.5l-2.4-1-2 3.4 2 1.5a7.4 7.4 0 0 0 0 3l-2 1.5 2 3.4 2.4-1A8.4 8.4 0 0 0 10 19l.4 3h3.2l.4-3a8.4 8.4 0 0 0 2.6-1.5l2.4 1 2-3.4z"/></svg></div>
-    <h2>Impostazioni</h2>
-    <p>Personalizza il tuo spazio AI.</p>
-
-    <div class="setting-row">
-      <div>
-        <b>Connessione AI</b>
-        <small id="settingsStatus">Controllo in corso…</small>
-      </div>
-      <span class="setting-tag" id="settingsTag">...</span>
-    </div>
-
-    <div class="setting-row theme-setting-row">
-      <div>
-        <b>Aspetto</b>
-        <small id="settingsThemeStatus">Tema scuro attivo</small>
-      </div>
-      <button type="button" class="setting-tag setting-theme-btn" id="settingsThemeBtn">Usa tema chiaro</button>
-    </div>
-
-    <section class="memory-section memory-profile-section" id="memorySection" aria-labelledby="memoryHeading">
-      <div class="memory-section-head">
-        <div>
-          <span class="memory-eyebrow">PERSONALIZZAZIONE</span>
-          <b id="memoryHeading">Memoria</b>
-          <small>Un profilo unico che si aggiorna nel tempo dalle informazioni utili che condividi.</small>
+<dialog id="settingsDialog" class="settings-dialog" aria-label="Impostazioni di Lorenzo AI">
+  <div class="settings" id="settingsShell">
+    <section class="settings-page active" id="settingsHomePage" data-settings-page="home">
+      <header class="settings-page-header settings-home-header">
+        <div class="settings-heading-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15.1a1.8 1.8 0 0 0 .1.1 1.8 1.8 0 0 1-2.5 2.5l-.1-.1a1.8 1.8 0 0 0-3 .9v.2a1.8 1.8 0 0 1-3.6 0v-.2a1.8 1.8 0 0 0-3-.9l-.1.1a1.8 1.8 0 0 1-2.5-2.5l.1-.1a1.8 1.8 0 0 0-.9-3H3.7a1.8 1.8 0 0 1 0-3.6h.2a1.8 1.8 0 0 0 .9-3l-.1-.1a1.8 1.8 0 0 1 2.5-2.5l.1.1a1.8 1.8 0 0 0 3-.9v-.2a1.8 1.8 0 0 1 3.6 0v.2a1.8 1.8 0 0 0 3 .9l.1-.1a1.8 1.8 0 0 1 2.5 2.5l-.1.1a1.8 1.8 0 0 0 .9 3h.2a1.8 1.8 0 0 1 0 3.6h-.2a1.8 1.8 0 0 0-.9 3z"/></svg>
         </div>
-        <span class="memory-private-label">Solo tu</span>
-      </div>
+        <div class="settings-page-title">
+          <h2>Impostazioni</h2>
+          <p>Personalizza il tuo spazio AI.</p>
+        </div>
+        <button type="button" class="settings-icon-button" id="settingsCloseBtn" aria-label="Chiudi impostazioni" title="Chiudi">×</button>
+      </header>
 
-      <div class="memory-profile-explainer">
-        <span class="memory-profile-symbol" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5A8.5 8.5 0 0 0 12 3.5Z"/><path d="M8.5 10h7M8.5 13h5M8.5 16h3"/></svg>
-        </span>
-        <p><b>Un riepilogo, non una lista di frasi.</b><br>Preferenze, interessi e progetti vengono organizzati in un testo coerente. Puoi correggerlo o cancellarlo in qualsiasi momento.</p>
-      </div>
+      <div class="settings-home-content">
+        <div class="settings-connection-row">
+          <span class="settings-row-icon connection-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5 9.2 17 19 7"/></svg></span>
+          <span class="settings-row-copy"><b>Connessione AI</b><small id="settingsStatus">Controllo in corso…</small></span>
+          <span class="setting-tag" id="settingsTag">...</span>
+        </div>
 
-      <label class="memory-profile-label" for="memoryProfileInput">Il tuo profilo personale</label>
-      <textarea id="memoryProfileInput" class="memory-profile-input" maxlength="8000" rows="8" placeholder="Il tuo profilo personale comparirà qui man mano che Lorenzo AI impara dalle conversazioni."></textarea>
-      <div class="memory-profile-footer">
-        <small id="memoryProfileCount">0 / 8.000</small>
-        <button type="button" class="primary-btn memory-save-btn" id="memorySaveBtn">Salva modifiche</button>
+        <button type="button" class="settings-nav-row" id="openMemorySettings">
+          <span class="settings-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 4.5a3 3 0 0 0-5 2.2 3.5 3.5 0 0 0 .4 6.7A3.3 3.3 0 0 0 8 18.5h1M15 4.5a3 3 0 0 1 5 2.2 3.5 3.5 0 0 1-.4 6.7 3.3 3.3 0 0 1-3.6 5.1h-1M9 4.5a3 3 0 0 1 6 0v15a3 3 0 0 1-6 0zM9 9H7m8 0h2M9 14H7m8 0h2"/></svg></span>
+          <span class="settings-row-copy"><b>Memoria</b><small id="memoryNavStatus">Gestisci cosa Lorenzo AI ricorda di te</small></span>
+          <svg class="settings-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+
+        <button type="button" class="settings-nav-row" id="openLimitsPage">
+          <span class="settings-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-7"/></svg></span>
+          <span class="settings-row-copy"><b>Limiti giornalieri</b><small>Controlla le richieste chat e le immagini disponibili</small></span>
+          <svg class="settings-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+
+        <button type="button" class="settings-nav-row" id="settingsThemeRow">
+          <span class="settings-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></span>
+          <span class="settings-row-copy"><b>Aspetto</b><small id="settingsThemeStatus">Tema scuro attivo</small></span>
+          <span class="settings-row-action" id="settingsThemeAction">Usa tema chiaro</span>
+        </button>
+
+        <button type="button" class="settings-nav-row" id="openAccountPage">
+          <span class="settings-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span>
+          <span class="settings-row-copy"><b>Account e dati</b><small id="settingsAccountStatus">Gestisci il tuo account e i dati salvati</small></span>
+          <svg class="settings-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+
+        <p class="settings-footer-note">Le impostazioni si applicano al tuo spazio Lorenzo AI. Puoi rivederle e modificarle in qualsiasi momento.</p>
       </div>
-      <p id="memoryStatus" class="memory-status" aria-live="polite">Caricamento del profilo…</p>
-      <button type="button" class="memory-clear-btn" id="memoryClearBtn" hidden>Cancella la memoria</button>
-      <button type="button" class="primary-btn memory-login-btn" id="memoryLoginBtn" hidden>Accedi per attivare la memoria</button>
-      <p class="memory-privacy-footnote">La memoria è associata al tuo account. Non dovrebbe contenere password, credenziali o informazioni altamente sensibili. Le informazioni possono essere incomplete: controlla e correggi il profilo quando vuoi.</p>
     </section>
 
-    <section class="usage-card" aria-labelledby="imageUsageHeading">
-      <div class="usage-heading">
-        <div>
-          <b id="imageUsageHeading">Utilizzo immagini</b>
-          <small>Limite giornaliero del tuo account</small>
+    <section class="settings-page" id="memorySettingsPage" data-settings-page="memory" hidden>
+      <header class="settings-page-header">
+        <button type="button" class="settings-icon-button" id="memoryBackBtn" aria-label="Torna alle impostazioni"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div class="settings-page-title centered"><h2>Memoria</h2><p>Personalizzazione</p></div>
+        <span class="settings-header-spacer" aria-hidden="true"></span>
+      </header>
+
+      <div class="settings-page-content">
+        <label class="memory-toggle-card" for="memoryEnabledToggle">
+          <span class="settings-row-copy"><b>Abilita memoria</b><small id="memoryToggleDescription">Consenti a Lorenzo AI di ricordare informazioni utili tra le conversazioni.</small></span>
+          <input type="checkbox" id="memoryEnabledToggle" class="settings-switch" role="switch" checked>
+          <span class="settings-switch-visual" aria-hidden="true"></span>
+        </label>
+        <p class="settings-muted-paragraph">Quando è attiva, Lorenzo AI può usare un riepilogo delle informazioni utili che hai condiviso. Disattivandola, il profilo viene conservato ma non viene usato né aggiornato nelle nuove risposte.</p>
+
+        <button type="button" class="settings-nav-row memory-summary-link" id="openMemorySummaryButton">
+          <span class="settings-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 9.5h7M8.5 12.5h7M8.5 15.5h4"/></svg></span>
+          <span class="settings-row-copy"><b>Riepilogo della memoria</b><small id="memorySummarySubtitle">Visualizza o modifica ciò che Lorenzo AI ricorda</small></span>
+          <svg class="settings-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+
+        <div class="settings-info-card">
+          <b>Un riepilogo, non una lista di frasi.</b>
+          <p>Interessi, preferenze e progetti sono organizzati in un profilo coerente. Puoi chiedere all'AI di correggerlo o eliminare tutto quando vuoi.</p>
         </div>
-        <button type="button" class="usage-refresh" id="refreshUsageBtn" aria-label="Aggiorna utilizzo immagini" title="Aggiorna"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.5 9a7 7 0 0 1 11.8-2L20 12M4 12l2.7 5a7 7 0 0 0 11.8-2"/></svg></button>
       </div>
-
-      <div class="usage-count-row">
-        <strong id="imageUsageCount">—</strong>
-        <span>immagini disponibili oggi</span>
-      </div>
-
-      <div
-        class="usage-meter"
-        id="imageUsageMeter"
-        role="progressbar"
-        aria-label="Immagini generate oggi"
-        aria-valuemin="0"
-        aria-valuemax="5"
-        aria-valuenow="0"
-      >
-        <span class="usage-meter-fill" id="imageUsageFill"></span>
-      </div>
-
-      <small class="usage-detail" id="imageUsageDetail">Caricamento utilizzo…</small>
-      <small class="usage-reset" id="imageUsageReset">Il limite si azzera ogni giorno.</small>
     </section>
 
-    <section class="usage-card" aria-labelledby="chatUsageHeading">
-      <div class="usage-heading">
-        <div>
-          <b id="chatUsageHeading">Utilizzo chat</b>
-          <small>Limite giornaliero personale o ospite</small>
+    <section class="settings-page" id="memorySummaryPage" data-settings-page="memory-summary" hidden>
+      <header class="settings-page-header memory-summary-header">
+        <button type="button" class="settings-icon-button" id="memorySummaryBackBtn" aria-label="Torna alla memoria"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div class="settings-page-title centered"><h2>Riepilogo della memoria</h2><p id="memorySummaryUpdated">Il profilo che Lorenzo AI ricorda</p></div>
+        <button type="button" class="settings-icon-button more-button" id="memoryMenuBtn" aria-label="Altre opzioni" aria-expanded="false" title="Altre opzioni">•••</button>
+        <div class="settings-popover" id="memoryMenu" hidden>
+          <button type="button" id="memoryInfoBtn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 10v6m0-9h.01"/></svg><span>Informazioni sulla memoria</span></button>
+          <button type="button" id="memoryRefreshBtn"><svg viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M5.5 9a7 7 0 0 1 11.8-2L20 12M4 12l2.7 5a7 7 0 0 0 11.8-2"/></svg><span>Aggiorna riepilogo</span></button>
+          <button type="button" id="memoryDeleteDisableBtn" class="danger"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg><span>Elimina e disattiva la memoria</span></button>
         </div>
-        <button type="button" class="usage-refresh" id="refreshChatUsageBtn" aria-label="Aggiorna utilizzo chat" title="Aggiorna"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.5 9a7 7 0 0 1 11.8-2L20 12M4 12l2.7 5a7 7 0 0 0 11.8-2"/></svg></button>
+      </header>
+
+      <div class="memory-summary-main">
+        <div class="memory-summary-meta"><b>Panoramica</b><span id="memorySummaryStatus" aria-live="polite">Caricamento del riepilogo…</span></div>
+        <article class="memory-summary-text" id="memorySummaryText">Caricamento del riepilogo…</article>
+        <div class="memory-summary-disabled-note" id="memoryDisabledNote" hidden>La memoria è disattivata. Il riepilogo viene conservato, ma Lorenzo AI non lo userà nelle risposte finché non la riattivi.</div>
       </div>
 
-      <div class="usage-count-row">
-        <strong id="chatUsageCount">—</strong>
-        <span>richieste disponibili oggi</span>
-      </div>
-
-      <div
-        class="usage-meter"
-        id="chatUsageMeter"
-        role="progressbar"
-        aria-label="Richieste chat usate oggi"
-        aria-valuemin="0"
-        aria-valuemax="40"
-        aria-valuenow="0"
-      >
-        <span class="usage-meter-fill" id="chatUsageFill"></span>
-      </div>
-
-      <small class="usage-detail" id="chatUsageDetail">Caricamento utilizzo…</small>
-      <small class="usage-reset" id="chatUsageReset">Il limite si azzera ogni giorno.</small>
+      <form class="memory-edit-composer" id="memoryEditForm">
+        <textarea id="memoryEditPrompt" rows="2" maxlength="1200" placeholder="Chiedi di modificare il riepilogo…" aria-label="Chiedi di modificare il riepilogo"></textarea>
+        <button type="submit" id="memoryEditSendBtn" aria-label="Invia richiesta di modifica memoria" title="Invia"><svg viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button>
+      </form>
+      <p class="memory-composer-footnote">Esempi: “Non ricordare più il mio vecchio progetto” oppure “Aggiorna le mie preferenze di risposta”.</p>
     </section>
 
-    <div class="setting-info">
-      Lorenzo AI utilizza servizi AI per generare risposte e immagini.
-      Non inserire chiavi API o password nei messaggi.
-    </div>
+    <section class="settings-page" id="memoryInfoPage" data-settings-page="memory-info" hidden>
+      <header class="settings-page-header">
+        <button type="button" class="settings-icon-button" id="memoryInfoBackBtn" aria-label="Torna al riepilogo"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div class="settings-page-title centered"><h2>Informazioni sulla memoria</h2><p>Privacy e controllo</p></div>
+        <span class="settings-header-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="settings-page-content settings-prose">
+        <h3>Come funziona</h3>
+        <p>Quando la memoria è attiva, Lorenzo AI può aggiornare un riepilogo con informazioni utili nel tempo, come preferenze di risposta, interessi, studio e progetti. Il riepilogo può essere usato per rendere le risposte più pertinenti.</p>
+        <h3>Dove vengono salvate le informazioni</h3>
+        <p>Il profilo è associato al tuo account Lorenzo AI e viene conservato nel database del servizio. Le richieste di lettura e modifica vengono verificate sul server in base alla sessione del tuo account.</p>
+        <h3>Come controllarle</h3>
+        <p>Puoi leggere e correggere il riepilogo, chiedere all'AI di dimenticare un dettaglio, disattivare la memoria o scegliere “Elimina e disattiva la memoria” per rimuovere il profilo e le vecchie note.</p>
+        <h3>Consigli per la privacy</h3>
+        <p>Non inserire password, chiavi API, credenziali o altre informazioni altamente sensibili. Controlla periodicamente il riepilogo: potrebbe essere incompleto o contenere errori.</p>
+      </div>
+    </section>
 
-    <button type="button" class="danger-btn" id="deleteAccountBtn">Elimina account e dati</button>
-    <small class="danger-note">Elimina definitivamente l’account, le conversazioni online e i file salvati nello spazio del tuo account.</small>
+    <section class="settings-page" id="limitsPage" data-settings-page="limits" hidden>
+      <header class="settings-page-header">
+        <button type="button" class="settings-icon-button" id="limitsBackBtn" aria-label="Torna alle impostazioni"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div class="settings-page-title centered"><h2>Limiti giornalieri</h2><p>Il tuo utilizzo di Lorenzo AI</p></div>
+        <span class="settings-header-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="settings-page-content usage-pages-content">
+        <p class="settings-muted-paragraph">Qui puoi controllare quante richieste chat e quante immagini puoi ancora usare oggi. I contatori si aggiornano ogni giorno.</p>
+        <section class="usage-card" aria-labelledby="imageUsageHeading">
+          <div class="usage-heading">
+            <div><b id="imageUsageHeading">Utilizzo immagini</b><small>Limite giornaliero del tuo account</small></div>
+            <button type="button" class="usage-refresh" id="refreshUsageBtn" aria-label="Aggiorna utilizzo immagini" title="Aggiorna"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.5 9a7 7 0 0 1 11.8-2L20 12M4 12l2.7 5a7 7 0 0 0 11.8-2"/></svg></button>
+          </div>
+          <div class="usage-count-row"><strong id="imageUsageCount">—</strong><span>immagini disponibili oggi</span></div>
+          <div class="usage-meter" id="imageUsageMeter" role="progressbar" aria-label="Immagini generate oggi" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"><span class="usage-meter-fill" id="imageUsageFill"></span></div>
+          <small class="usage-detail" id="imageUsageDetail">Caricamento utilizzo…</small>
+          <small class="usage-reset" id="imageUsageReset">Il limite si azzera ogni giorno.</small>
+        </section>
+        <section class="usage-card" aria-labelledby="chatUsageHeading">
+          <div class="usage-heading">
+            <div><b id="chatUsageHeading">Utilizzo chat</b><small>Limite giornaliero personale o ospite</small></div>
+            <button type="button" class="usage-refresh" id="refreshChatUsageBtn" aria-label="Aggiorna utilizzo chat" title="Aggiorna"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.5 9a7 7 0 0 1 11.8-2L20 12M4 12l2.7 5a7 7 0 0 0 11.8-2"/></svg></button>
+          </div>
+          <div class="usage-count-row"><strong id="chatUsageCount">—</strong><span>richieste disponibili oggi</span></div>
+          <div class="usage-meter" id="chatUsageMeter" role="progressbar" aria-label="Richieste chat usate oggi" aria-valuemin="0" aria-valuemax="40" aria-valuenow="0"><span class="usage-meter-fill" id="chatUsageFill"></span></div>
+          <small class="usage-detail" id="chatUsageDetail">Caricamento utilizzo…</small>
+          <small class="usage-reset" id="chatUsageReset">Il limite si azzera ogni giorno.</small>
+        </section>
+      </div>
+    </section>
 
-    <button class="primary-btn" value="close">Fatto</button>
-  </form>
+    <section class="settings-page" id="accountPage" data-settings-page="account" hidden>
+      <header class="settings-page-header">
+        <button type="button" class="settings-icon-button" id="accountBackBtn" aria-label="Torna alle impostazioni"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div class="settings-page-title centered"><h2>Account e dati</h2><p>Gestisci il tuo spazio personale</p></div>
+        <span class="settings-header-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="settings-page-content">
+        <div class="settings-account-card">
+          <span class="settings-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span>
+          <div class="settings-row-copy"><b id="accountPageTitle">Account Lorenzo AI</b><small id="accountPageDescription">Controlla i dati associati al tuo account.</small></div>
+        </div>
+        <div class="settings-info-card"><b>Eliminazione definitiva</b><p>Rimuove l'account, le conversazioni cloud, il profilo memoria e i file associati. L'operazione non può essere annullata.</p></div>
+        <button type="button" class="danger-btn" id="deleteAccountBtn">Elimina account e dati</button>
+        <small class="danger-note">Questa operazione è irreversibile. Se non hai effettuato l'accesso, devi accedere prima di eliminare un account.</small>
+        <button type="button" class="primary-btn settings-signin-btn" id="settingsSignInBtn" hidden>Accedi a Lorenzo AI</button>
+      </div>
+    </section>
+  </div>
 </dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0"></script>
