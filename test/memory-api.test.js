@@ -53,8 +53,11 @@ test('memory API returns only the authenticated user memories', async () => {
         async json() { return { id: TEST_USER_ID }; }
       };
     }
-    assert.match(String(url), /user_memories/);
     assert.match(String(url), new RegExp('user_id=eq\\.' + TEST_USER_ID));
+    if (String(url).includes('/user_memory_profiles?')) {
+      return { ok: true, status: 200, async json() { return []; } };
+    }
+    assert.match(String(url), /user_memories/);
     return {
       ok: true,
       status: 200,

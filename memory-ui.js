@@ -2,15 +2,13 @@
   'use strict';
 
   const $ = selector => document.querySelector(selector);
-  const MAX_MEMORY_LENGTH = 400;
-  let memories = [];
+  const MAX_PROFILE_LENGTH = 8000;
   let loading = false;
+  let loadedProfile = '';
 
   function getToken() {
     return supabaseClient.auth.getSession().then(({ data, error }) => {
-      if (error || !data?.session?.access_token) {
-        throw new Error('Sessione scaduta. Accedi nuovamente.');
-      }
+      if (error || !data?.session?.access_token) throw new Error('Sessione scaduta. Accedi nuovamente.');
       return data.session.access_token;
     });
   }
@@ -27,102 +25,87 @@
     const headers = { Authorization: 'Bearer ' + token };
     if (body) headers['Content-Type'] = 'application/json';
     const response = await fetch('/api/memory' + query, {
-      method,
-      headers,
-      ...(body ? { body: JSON.stringify(body) } : {})
+      method, headers, ...(body ? { body: JSON.stringify(body) } : {})
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.error || 'Operazione sulla memoria non riuscita.');
-    }
+    if (!response.ok) throw new Error(data.error || 'Operazione sulla memoria non riuscita.');
     return data;
   }
 
-  function renderMemoryList() {
-    const list = $('#memoryList');
-    const clear = $('#memoryClearBtn');
-    if (!list) return;
-    list.replaceChildren();
-
-    if (!memories.length) {
-      const empty = document.createElement('p');
-      empty.className = 'memory-empty';
-      empty.textContent = 'Non hai ancora salvato note. Scrivi “Ricorda che…” in chat o aggiungine una qui.';
-      list.append(empty);
-      if (clear) clear.hidden = true;
-      return;
-    }
-
-    if (clear) clear.hidden = false;
-    memories.forEach(memory => {
-      const row = document.createElement('div');
-      row.className = 'memory-item';
-
-      const text = document.createElement('p');
-      text.className = 'memory-item-text';
-      text.textContent = memory.content;
-
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'memory-delete';
-      remove.textContent = 'Elimina';
-      remove.setAttribute('aria-label', 'Elimina memoria: ' + memory.content);
-      remove.addEventListener('click', async () => {
-        if (loading) return;
-        remove.disabled = true;
-        try {
-          await memoryRequest('DELETE', null, '?id=' + encodeURIComponent(memory.id));
-          memories = memories.filter(item => item.id !== memory.id);
-          renderMemoryList();
-          showStatus('Memoria eliminata.');
-        } catch (error) {
-          showStatus(error.message, true);
-          remove.disabled = false;
-        }
-      });
-
-      row.append(text, remove);
-      list.append(row);
-    });
-  }
-
   async function loadMemories() {
-    const input = $('#memoryInput');
+    const editor = $('#memoryProfileInput');
     const save = $('#memorySaveBtn');
     const clear = $('#memoryClearBtn');
     const login = $('#memoryLoginBtn');
-    if (!input || loading) return;
+    if (!editor || loading) return;
 
     if (!currentUser) {
-      memories = [];
-      renderMemoryList();
-      input.disabled = true;
+      editor.value = '';
+      editor.disabled = true;
       if (save) save.disabled = true;
       if (clear) clear.hidden = true;
       if (login) login.hidden = false;
-      showStatus('Accedi per usare la memoria personale. Le chat senza account non hanno memoria sincronizzata.');
+      loadedProfile = '';
+      showStatus('Accedi per attivare il profilo personale. La memoria è privata e sincronizzata con il tuo account.');
       return;
     }
 
     if (login) login.hidden = true;
-    input.disabled = false;
+    editor.disabled = false;
     if (save) save.disabled = false;
     loading = true;
-    showStatus('Caricamento delle memorie…');
+    showStatus('Caricamento del profilo personale…');
     try {
       const data = await memoryRequest('GET');
-      memories = Array.isArray(data.memories) ? data.memories.slice(0, 30) : [];
-      renderMemoryList();
-      showStatus(memories.length
-        ? memories.length + ' di 30 note salvate. Le note vengono usate solo quando pertinenti.'
-        : 'Nessuna memoria salvata. Puoi aggiungere fino a 30 note.');
+      const profile = String(data.profile?.profile_text || '').slice(0, MAX_PROFILE_LENGTH);
+      editor.value = profile;
+      loadedProfile = profile;
+      if (clear) clear.hidden = !profile && !(Array.isArray(data.memories) && data.memories.length);
+      showStatus(profile
+        ? 'Profilo aggiornato. Lorenzo AI lo userà quando sarà utile alla conversazione.'
+        : 'Il profilo è ancora vuoto. Con il tempo si aggiornerà dalle informazioni utili che condividi nelle chat.');
+      const count = $('#memoryProfileCount');
+      if (count) count.textContent = profile.length.toLocaleString('it-IT') + ' / ' + MAX_PROFILE_LENGTH.toLocaleString('it-IT');
     } catch (error) {
-      memories = [];
-      renderMemoryList();
       showStatus(error.message, true);
     } finally {
       loading = false;
     }
+  }
+
+  async function saveProfile() {
+    if (!currentUser || loading) return;
+    const editor = $('#memoryProfileInput');
+    const save = $('#memorySaveBtn');
+    const profileText = String(editor?.value || '').trim();
+    if (profileText.length > MAX_PROFILE_LENGTH) {
+      showStatus('Il profilo può contenere al massimo 8.000 caratteri.', true);
+      return;
+    }
+    if (save) save.disabled = true;
+    loading = true;
+    showStatus('Salvataggio del profilo…');
+    try {
+      const data = await memoryRequest('POST', { action: 'saveProfile', profile_text: profileText });
+      loadedProfile = String(data.profile?.profile_text ?? profileText);
+      if (editor) editor.value = loadedProfile;
+      const count = $('#memoryProfileCount');
+      if (count) count.textContent = loadedProfile.length.toLocaleString('it-IT') + ' / ' + MAX_PROFILE_LENGTH.toLocaleString('it-IT');
+      showStatus('Profilo personale salvato.');
+      showToast('Memoria personale aggiornata.');
+    } catch (error) {
+      showStatus(error.message, true);
+    } finally {
+      loading = false;
+      if (save) save.disabled = false;
+    }
+  }
+
+  function updateCount() {
+    const editor = $('#memoryProfileInput');
+    const count = $('#memoryProfileCount');
+    if (!editor || !count) return;
+    count.textContent = editor.value.length.toLocaleString('it-IT') + ' / ' + MAX_PROFILE_LENGTH.toLocaleString('it-IT');
   }
 
   function addCommandToChat(userText, assistantText) {
@@ -136,80 +119,46 @@
     chat.messages.push({ role: 'assistant', content: assistantText });
     welcome.hidden = true;
     addMessage('user', userText);
-    const answer = addMessage('assistant', assistantText);
+    addMessage('assistant', assistantText);
     renderHistory();
     saveChat(chat).then(() => {
       renderHistory();
       if (activeId === chat.id) scrollBottom();
-    }).catch(() => showToast('Nota salvata, ma non riesco a salvare la conferma nella chat.'));
-  }
-
-  async function executeMemoryCommand(text, type, content) {
-    if (!currentUser) {
-      showToast('Accedi per usare la memoria personale. La nota è rimasta nel campo di testo.');
-      return true;
-    }
-    if (busy || !authReady) return true;
-    if (selectedAttachments.length) {
-      showToast('Invia o rimuovi gli allegati prima di usare un comando di memoria.');
-      return true;
-    }
-
-    busy = true;
-    promptEl.value = '';
-    resizeInput();
-    try {
-      let answer;
-      if (type === 'add') {
-        const result = await memoryRequest('POST', { action: 'add', content });
-        const saved = result.memory?.content || content;
-        answer = result.duplicate
-          ? 'Questa nota è già presente nella tua memoria personale.'
-          : 'Ho salvato nella tua memoria personale: “' + saved + '”. La userò nelle prossime conversazioni quando sarà utile.';
-        showToast(result.duplicate ? 'Nota già presente nella memoria.' : 'Memoria salvata.');
-      } else if (type === 'clear') {
-        await memoryRequest('DELETE', null, '?all=true');
-        answer = 'Ho cancellato tutte le note della tua memoria personale.';
-        showToast('Memoria personale cancellata.');
-      } else {
-        const result = await memoryRequest('DELETE', { content }, '');
-        answer = result.deleted
-          ? 'Ho rimosso dalla memoria personale la nota richiesta.'
-          : 'Non ho trovato una nota identica da rimuovere. Puoi controllare le memorie dalle impostazioni.';
-        showToast(result.deleted ? 'Memoria eliminata.' : 'Non ho trovato una nota identica.');
-      }
-      addCommandToChat(text, answer);
-      if ($('#settingsDialog')?.open) await loadMemories();
-    } catch (error) {
-      showToast(error.message || 'Non sono riuscito ad aggiornare la memoria.');
-      promptEl.value = text;
-      resizeInput();
-    } finally {
-      busy = false;
-    }
-    return true;
+    }).catch(() => showToast('Memoria aggiornata, ma non riesco a salvare la conferma nella chat.'));
   }
 
   async function wrappedSendMessage(text) {
     const value = String(text || '').trim();
     if (!value || selectedAttachments.length) return originalSendMessage(value);
-
-    const clearMatch = value.match(/^(?:dimentica|cancella)\s+(?:tutte le memorie|tutto quello che ricordi)\.?$/i);
-    if (clearMatch) return executeMemoryCommand(value, 'clear', '');
-
-    const addMatch = value.match(/^(?:ricorda(?:ti)?(?:\s+che)?|memorizza(?:\s+che)?|tieni a mente(?:\s+che)?)\s+(.+)$/i);
-    if (addMatch) {
-      const content = addMatch[1].trim();
-      if (content.length > MAX_MEMORY_LENGTH) {
-        showToast('Ogni memoria può contenere al massimo 400 caratteri.');
-        return;
+    if (/^(?:dimentica|cancella)\s+(?:tutte le memorie|tutto quello che ricordi)\.?$/i.test(value)) {
+      if (!currentUser) {
+        showToast('Accedi per cancellare la memoria personale.');
+        return true;
       }
-      return executeMemoryCommand(value, 'add', content);
+      if (busy || !authReady) return true;
+      busy = true;
+      promptEl.value = '';
+      resizeInput();
+      try {
+        await memoryRequest('DELETE', null, '?all=true');
+        loadedProfile = '';
+        const editor = $('#memoryProfileInput');
+        if (editor) editor.value = '';
+        updateCount();
+        if ($('#settingsDialog')?.open) await loadMemories();
+        addCommandToChat(value, 'Ho cancellato il tuo profilo personale e le vecchie note salvate.');
+        showToast('Memoria personale cancellata.');
+      } catch (error) {
+        showToast(error.message || 'Non sono riuscito a cancellare la memoria.');
+        promptEl.value = value;
+        resizeInput();
+      } finally {
+        busy = false;
+      }
+      return true;
     }
-
-    const deleteMatch = value.match(/^(?:dimentica(?:ti)?(?:\s+che)?|rimuovi dalla memoria(?:\s+che)?)\s+(.+)$/i);
-    if (deleteMatch) return executeMemoryCommand(value, 'delete', deleteMatch[1].trim());
-
+    // Le richieste normali, incluse "ricorda che..." e "dimentica che...",
+    // passano alla chat: il backend aggiorna il profilo riassuntivo.
     return originalSendMessage(value);
   }
 
@@ -220,74 +169,34 @@
     $('#settingsBtn')?.click();
     window.setTimeout(() => {
       $('#memorySection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      $('#memoryInput')?.focus({ preventScroll: true });
+      $('#memoryProfileInput')?.focus({ preventScroll: true });
     }, 120);
   });
-
-  $('#settingsBtn')?.addEventListener('click', () => {
-    window.setTimeout(() => loadMemories(), 0);
-  });
-
-  $('#memorySaveBtn')?.addEventListener('click', async () => {
-    if (!currentUser) {
-      showStatus('Accedi per salvare le tue note.', true);
-      return;
-    }
-    const input = $('#memoryInput');
-    const content = String(input?.value || '').trim();
-    if (content.length < 2) {
-      showStatus('Scrivi una nota di almeno 2 caratteri.', true);
-      input?.focus();
-      return;
-    }
-    if (content.length > MAX_MEMORY_LENGTH) {
-      showStatus('Ogni memoria può contenere al massimo 400 caratteri.', true);
-      return;
-    }
-    const button = $('#memorySaveBtn');
-    if (button) button.disabled = true;
-    try {
-      const result = await memoryRequest('POST', { action: 'add', content });
-      if (input) input.value = '';
-      await loadMemories();
-      showToast(result.duplicate ? 'Questa nota è già salvata.' : 'Memoria personale aggiornata.');
-    } catch (error) {
-      showStatus(error.message, true);
-    } finally {
-      if (button) button.disabled = false;
-    }
-  });
-
-  $('#memoryInput')?.addEventListener('keydown', event => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      $('#memorySaveBtn')?.click();
-    }
-  });
-
+  $('#settingsBtn')?.addEventListener('click', () => window.setTimeout(loadMemories, 0));
+  $('#memorySaveBtn')?.addEventListener('click', saveProfile);
+  $('#memoryProfileInput')?.addEventListener('input', updateCount);
   $('#memoryClearBtn')?.addEventListener('click', async () => {
-    if (!currentUser || loading || !memories.length) return;
-    if (!window.confirm('Vuoi cancellare tutte le note della memoria personale?')) return;
+    if (!currentUser || loading) return;
+    if (!window.confirm('Vuoi cancellare il profilo personale e tutte le vecchie note salvate?')) return;
     try {
       await memoryRequest('DELETE', null, '?all=true');
-      memories = [];
-      renderMemoryList();
-      showStatus('Memoria personale cancellata.');
-      showToast('Tutte le memorie sono state cancellate.');
+      loadedProfile = '';
+      const editor = $('#memoryProfileInput');
+      if (editor) editor.value = '';
+      updateCount();
+      await loadMemories();
+      showToast('Memoria personale cancellata.');
     } catch (error) {
       showStatus(error.message, true);
     }
   });
-
-  $('#memoryLoginBtn')?.addEventListener('click', () => {
-    window.location.href = '/login.html';
-  });
-
+  $('#memoryLoginBtn')?.addEventListener('click', () => { window.location.href = '/login.html'; });
   supabaseClient.auth.onAuthStateChange(() => {
     window.setTimeout(() => {
       if (!currentUser) {
-        memories = [];
-        renderMemoryList();
+        loadedProfile = '';
+        const editor = $('#memoryProfileInput');
+        if (editor) editor.value = '';
       }
       if ($('#settingsDialog')?.open) loadMemories();
     }, 0);

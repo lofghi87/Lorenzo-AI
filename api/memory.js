@@ -3,6 +3,7 @@ const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_rZEaUwMU4CCl7kUPdUlvuw_cuX2n9hB
 const TABLE = 'user_memories';
 const MAX_MEMORIES = 30;
 const MAX_MEMORY_LENGTH = 400;
+const MAX_PROFILE_LENGTH = 8000;
 
 function jsonError(res, status, message) {
   return res.status(status).json({ error: message });
@@ -78,6 +79,34 @@ async function readMemories(userId, serviceKey) {
   return response.json();
 }
 
+async function readProfile(userId, serviceKey) {
+  const query = new URLSearchParams({ select: 'profile_text,updated_at', user_id: 'eq.' + userId, limit: '1' });
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/user_memory_profiles?${query}`, {
+    headers: serviceHeaders(serviceKey), signal: AbortSignal.timeout(12000)
+  });
+  if (!response.ok) {
+    const error = new Error(response.status === 404 ? 'La tabella del profilo memoria non è ancora configurata. Applica la nuova migration Supabase.' : 'Non riesco a caricare il profilo personale. Riprova più tardi.');
+    error.statusCode = 503; throw error;
+  }
+  const rows = await response.json();
+  return Array.isArray(rows) && rows[0] ? { profile_text: String(rows[0].profile_text || ''), updated_at: rows[0].updated_at || null } : { profile_text: '', updated_at: null };
+}
+
+async function saveProfile(userId, serviceKey, profileText) {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/user_memory_profiles?on_conflict=user_id`, {
+    method: 'POST',
+    headers: serviceHeaders(serviceKey, 'resolution=merge-duplicates,return=representation'),
+    body: JSON.stringify({ user_id: userId, profile_text: profileText, updated_at: new Date().toISOString() }),
+    signal: AbortSignal.timeout(12000)
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    console.error('Salvataggio profilo memoria non riuscito:', response.status, detail.slice(0, 250));
+    const error = new Error('Non sono riuscito a salvare il profilo personale. Verifica la migration Supabase.'); error.statusCode = 503; throw error;
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows[0] ? rows[0] : { profile_text: profileText };
+}
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -95,12 +124,18 @@ module.exports = async function handler(req, res) {
     const userId = await verifyUser(req);
 
     if (req.method === 'GET') {
-      const memories = await readMemories(userId, serviceKey);
-      return res.status(200).json({ memories });
+      const [memories, profile] = await Promise.all([readMemories(userId, serviceKey), readProfile(userId, serviceKey)]);
+      return res.status(200).json({ memories, profile });
     }
 
     if (req.method === 'POST') {
       const action = String(req.body?.action || 'add');
+      if (action === 'saveProfile') {
+        const profileText = String(req.body?.profile_text || '').trim();
+        if (profileText.length > MAX_PROFILE_LENGTH) return jsonError(res, 400, 'Il profilo può contenere al massimo 8.000 caratteri.');
+        const profile = await saveProfile(userId, serviceKey, profileText);
+        return res.status(200).json({ profile });
+      }
       if (action !== 'add') return jsonError(res, 400, 'Azione non valida.');
       const content = normalizeContent(req.body?.content);
       if (content.length < 2) {
@@ -146,11 +181,15 @@ module.exports = async function handler(req, res) {
     const clearAll = String(req.query?.all || '') === 'true';
 
     if (clearAll) {
-      const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/${TABLE}?user_id=eq.${encodeURIComponent(userId)}`,
-        { method: 'DELETE', headers: serviceHeaders(serviceKey), signal: AbortSignal.timeout(12000) }
-      );
-      if (!response.ok) return jsonError(res, 503, 'Non sono riuscito a cancellare la memoria.');
+      const [notesResponse, profileResponse] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?user_id=eq.${encodeURIComponent(userId)}`, {
+          method: 'DELETE', headers: serviceHeaders(serviceKey), signal: AbortSignal.timeout(12000)
+        }),
+        fetch(`${SUPABASE_URL}/rest/v1/user_memory_profiles?user_id=eq.${encodeURIComponent(userId)}`, {
+          method: 'DELETE', headers: serviceHeaders(serviceKey), signal: AbortSignal.timeout(12000)
+        })
+      ]);
+      if (!notesResponse.ok || !profileResponse.ok) return jsonError(res, 503, 'Non sono riuscito a cancellare tutta la memoria.');
       return res.status(200).json({ deleted: true, all: true });
     }
 
