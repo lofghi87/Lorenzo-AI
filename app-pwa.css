@@ -1,0 +1,79 @@
+/* Lorenzo AI — mobile app finish */
+:root {
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+html { min-height: 100%; background: var(--bg); }
+body {
+  min-height: 100dvh;
+  overscroll-behavior-y: contain;
+  -webkit-tap-highlight-color: transparent;
+}
+button, a, input, textarea { touch-action: manipulation; }
+button { -webkit-appearance: none; }
+.app { min-height: 100dvh; }
+.main { min-height: 100dvh; }
+.topbar {
+  padding-top: var(--app-safe-top);
+  min-height: calc(68px + var(--app-safe-top));
+}
+.composer, .input-area, .prompt-container { padding-bottom: max(12px, var(--app-safe-bottom)); }
+button, .history-item, .suggestion, .model-pill {
+  transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+button:active { transform: scale(.975); }
+:focus-visible { outline: 2px solid var(--accent2); outline-offset: 3px; }
+.pwa-install-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(196,181,253,.35);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(196,181,253,.19), rgba(155,135,245,.1));
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  box-shadow: 0 4px 18px rgba(155,135,245,.08);
+}
+.pwa-install-button:hover { border-color: var(--accent); }
+@media (max-width: 760px) {
+  body { overflow-x: hidden; }
+  .app { width: 100%; }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+  }
+  .chat-area {
+    width: 100%;
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: calc(16px + var(--app-safe-bottom));
+  }
+  .composer, .input-area, .prompt-container {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+  textarea, input { font-size: 16px; }
+  .welcome { padding-top: 24px; padding-bottom: 26px; }
+  .pwa-install-button { padding: 0 10px; }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .sidebar { width: 240px; }
+  .chat-area { max-width: 900px; padding-left: 28px; padding-right: 28px; }
+}
+@media (display-mode: standalone) {
+  .topbar { padding-top: max(var(--app-safe-top), 4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
