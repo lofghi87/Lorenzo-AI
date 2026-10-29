@@ -1226,3 +1226,26 @@ html.is-standalone body,
 html.is-standalone body * {
   touch-action: pan-x pan-y;
 }
+
+
+/* La viewport applicativa governa anche min-height: evita una pagina più alta
+   dell'area visibile quando iOS mostra/nasconde tastiera e barre del browser. */
+html, body {
+  height: var(--app-viewport-height);
+}
+body {
+  min-height: 0;
+  overflow: hidden;
+}
+.app {
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: hidden;
+}
+.main {
+  min-height: 0;
+}
+body.is-standalone .app {
+  height: var(--app-viewport-height);
+  min-height: 0;
+}
