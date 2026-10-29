@@ -1767,9 +1767,9 @@ try {
 } catch {}
 
 const themeStatus = $('#settingsThemeStatus');
-const themeSettingBtn = $('#settingsThemeBtn');
+const themeSettingAction = $('#settingsThemeAction');
 if (themeStatus) themeStatus.textContent = document.body.classList.contains('light') ? 'Tema chiaro attivo' : 'Tema scuro attivo';
-if (themeSettingBtn) themeSettingBtn.textContent = document.body.classList.contains('light') ? 'Usa tema scuro' : 'Usa tema chiaro';
+if (themeSettingAction) themeSettingAction.textContent = document.body.classList.contains('light') ? 'Usa tema scuro' : 'Usa tema chiaro';
 
 setupAccountButton();
 
