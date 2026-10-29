@@ -534,10 +534,6 @@ module.exports = async function handler(req, res) {
     if (accessToken) {
       userId = await verifyUser(accessToken);
     }
-    const memoryPrompt = userId
-      ? await loadUserMemoryPrompt(userId, serviceKey)
-      : '';
-
     if (hasStorageAttachments && !userId) {
       return res.status(401).json({
         error: 'Accedi al tuo account per utilizzare allegati grandi.'
@@ -707,6 +703,11 @@ module.exports = async function handler(req, res) {
         error: 'Nessun messaggio valido.'
       });
     }
+
+    // Solo dopo aver superato il controllo quota carichiamo le memorie private.
+    const memoryPrompt = userId
+      ? await loadUserMemoryPrompt(userId, serviceKey)
+      : '';
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:${wantsStream ? 'streamGenerateContent?alt=sse' : 'generateContent'}`,
