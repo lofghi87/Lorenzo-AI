@@ -232,12 +232,38 @@ button { -webkit-appearance: none; }
   .suggestion { padding: 8px; }
 }
 @media (display-mode: standalone) {
-  /* iOS mostra la status bar; questa area evita che i controlli finiscano sotto di essa. */
+  /* In iOS Home Screen la viewport CSS può essere più corta dell'area visibile.
+     Il compositore viene ancorato al bordo inferiore della viewport reale. */
   .topbar {
     padding-top: 0;
     min-height: 56px;
   }
   .composer-wrap { padding-bottom: max(10px, var(--app-safe-bottom)); }
+}
+@media (display-mode: standalone) and (max-width: 760px) {
+  .main { min-height: 0; }
+  .chat-area {
+    padding-bottom: calc(190px + var(--app-safe-bottom));
+    scroll-padding-bottom: calc(190px + var(--app-safe-bottom));
+  }
+  .composer-wrap {
+    position: fixed;
+    z-index: 25;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 8px max(9px, var(--app-safe-left)) max(10px, var(--app-safe-bottom));
+    background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--bg) 94%, transparent) 18%);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+  .composer-wrap .disclaimer {
+    margin-bottom: 0;
+    padding-bottom: 2px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
