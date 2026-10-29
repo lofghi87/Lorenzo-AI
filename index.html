@@ -103,12 +103,9 @@
         <small id="connectionStatus">Connessione in corso…</small>
       </div>
 
-      <button
-        id="settingsBtn"
-        class="icon-btn"
-        title="Impostazioni"
-        aria-label="Impostazioni"
-      >⚙</button>
+      <button id="settingsBtn" class="icon-btn" title="Impostazioni" aria-label="Impostazioni">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1a1.8 1.8 0 0 1-2.5 2.5l-.1-.1a1.8 1.8 0 0 0-3 .9v.2a1.8 1.8 0 0 1-3.6 0v-.2a1.8 1.8 0 0 0-3-.9l-.1.1a1.8 1.8 0 0 1-2.5-2.5l.1-.1a1.8 1.8 0 0 0-.9-3H3.7a1.8 1.8 0 0 1 0-3.6h.2a1.8 1.8 0 0 0 .9-3l-.1-.1a1.8 1.8 0 0 1 2.5-2.5l.1.1a1.8 1.8 0 0 0 3-.9v-.2a1.8 1.8 0 0 1 3.6 0v.2a1.8 1.8 0 0 0 3 .9l.1-.1a1.8 1.8 0 0 1 2.5 2.5l-.1.1a1.8 1.8 0 0 0 .9 3h.2a1.8 1.8 0 0 1 0 3.6h-.2a1.8 1.8 0 0 0-.9 3z"/></svg>
+      </button>
     </div>
   </aside>
 
@@ -265,7 +262,7 @@
               </div>
             </details>
             <button type="button" id="voiceInputBtn" class="tool-btn voice-input" aria-label="Dettatura vocale" title="Dettatura vocale">
-              <span aria-hidden="true">🎙</span><span>Voce</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" class="tool-icon"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v3M8 22h8"/></svg><span>Voce</span>
             </button>
 
           </div>
@@ -321,6 +318,23 @@
       <button type="button" class="setting-tag setting-theme-btn" id="settingsThemeBtn">Usa tema chiaro</button>
     </div>
 
+    <section class="memory-section" id="memorySection" aria-labelledby="memoryHeading">
+      <div class="memory-section-head">
+        <div><b id="memoryHeading">Memoria personale</b><small>Note che Lorenzo AI può ricordare nelle prossime conversazioni.</small></div>
+        <span class="memory-private-label">Privata</span>
+      </div>
+      <p class="memory-note">Salva solo ciò che scegli esplicitamente. Evita password, chiavi, dati bancari e informazioni molto sensibili.</p>
+      <div class="memory-add-row">
+        <label for="memoryInput" class="visually-hidden">Nuova nota da ricordare</label>
+        <input id="memoryInput" type="text" maxlength="400" placeholder="Es. Preferisco risposte brevi e con esempi">
+        <button type="button" class="primary-btn memory-save-btn" id="memorySaveBtn">Salva</button>
+      </div>
+      <p id="memoryStatus" class="memory-status" aria-live="polite">Caricamento memoria…</p>
+      <div id="memoryList" class="memory-list"></div>
+      <button type="button" class="memory-clear-btn" id="memoryClearBtn">Cancella tutte le memorie</button>
+      <button type="button" class="primary-btn memory-login-btn" id="memoryLoginBtn" hidden>Accedi per attivare la memoria</button>
+    </section>
+
     <section class="usage-card" aria-labelledby="imageUsageHeading">
       <div class="usage-heading">
         <div>
@@ -355,7 +369,7 @@
       <div class="usage-heading">
         <div>
           <b id="chatUsageHeading">Utilizzo chat</b>
-          <small>Richieste giornaliere del tuo account</small>
+          <small>Limite giornaliero personale o ospite</small>
         </div>
         <button type="button" class="usage-refresh" id="refreshChatUsageBtn" aria-label="Aggiorna utilizzo chat" title="Aggiorna">↻</button>
       </div>
@@ -401,6 +415,7 @@
 <script src="/features.js"></script>
 <script src="/app.js"></script>
 <script src="/voice-input.js"></script>
+<script src="/memory-ui.js"></script>
 <script src="/pwa.js"></script>
 </body>
 </html>
