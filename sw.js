@@ -1,14 +1,18 @@
 'use strict';
 
-const CACHE_NAME = 'lorenzo-ai-shell-v1';
+const CACHE_NAME = 'lorenzo-ai-shell-v2';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/style.css',
   '/polish.css',
+  '/premium.css',
+  '/app-pwa.css',
   '/manifest.json',
   '/app.js',
   '/features.js',
+  '/memory-ui.js',
+  '/voice-input.js',
   '/pwa.js',
   '/lorenzo-ai-logo.png'
 ];
