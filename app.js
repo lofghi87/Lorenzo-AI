@@ -108,90 +108,203 @@ function savePinnedChatIds(ids) {
   }
 }
 
+function historyOrderStorageKey() {
+  return 'lorenzo-ai-history-order-v1:' + (currentUser?.id || 'guest');
+}
+
+function loadHistoryOrder() {
+  try {
+    const value = JSON.parse(localStorage.getItem(historyOrderStorageKey()) || '[]');
+    return Array.isArray(value) ? value.filter(item => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistoryOrder(ids) {
+  try {
+    localStorage.setItem(historyOrderStorageKey(), JSON.stringify(ids));
+    return true;
+  } catch {
+    showToast('Non riesco a salvare la disposizione delle chat su questo dispositivo.');
+    return false;
+  }
+}
+
+function defaultHistoryOrder() {
+  const pinned = loadPinnedChatIds();
+  return chats.slice().reverse()
+    .sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)))
+    .map(chat => chat.id);
+}
+
+function moveChatInHistory(chatId, direction) {
+  const ids = loadHistoryOrder();
+  const base = ids.length ? ids.filter(id => chats.some(chat => chat.id === id)) : defaultHistoryOrder();
+  for (const chat of chats) if (!base.includes(chat.id)) base.push(chat.id);
+  const index = base.indexOf(chatId);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= base.length) {
+    showToast(direction < 0 ? 'La chat è già in cima.' : 'La chat è già in fondo.');
+    return;
+  }
+  [base[index], base[nextIndex]] = [base[nextIndex], base[index]];
+  if (saveHistoryOrder(base)) {
+    renderHistory();
+    showToast(direction < 0 ? 'Chat spostata più in alto.' : 'Chat spostata più in basso.');
+  }
+}
+
+let historyMenuChatId = null;
+let historyPressTimer = null;
+let suppressHistoryClickUntil = 0;
+
+function ensureHistoryContextMenu() {
+  let menu = $('#historyContextMenu');
+  if (menu) return menu;
+  menu = document.createElement('div');
+  menu.id = 'historyContextMenu';
+  menu.className = 'history-context-menu';
+  menu.hidden = true;
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = [
+    '<button type="button" role="menuitem" data-history-action="top"><span class="history-menu-icon">↑</span><span>Sposta in cima</span></button>',
+    '<button type="button" role="menuitem" data-history-action="up"><span class="history-menu-icon">↑</span><span>Sposta più in alto</span></button>',
+    '<button type="button" role="menuitem" data-history-action="down"><span class="history-menu-icon">↓</span><span>Sposta più in basso</span></button>',
+    '<div class="history-menu-divider"></div>',
+    '<button type="button" role="menuitem" data-history-action="pin"><span class="history-menu-icon">☆</span><span>Preferita</span></button>',
+    '<button type="button" role="menuitem" data-history-action="rename"><span class="history-menu-icon">✎</span><span>Rinomina</span></button>',
+    '<button type="button" role="menuitem" data-history-action="export"><span class="history-menu-icon">↓</span><span>Esporta chat</span></button>',
+    '<div class="history-menu-divider"></div>',
+    '<button type="button" role="menuitem" data-history-action="delete" class="danger"><span class="history-menu-icon">×</span><span>Elimina chat</span></button>'
+  ].join('');
+  document.body.append(menu);
+  menu.addEventListener('click', event => {
+    const button = event.target.closest('[data-history-action]');
+    if (!button || !historyMenuChatId) return;
+    const chatId = historyMenuChatId;
+    const action = button.dataset.historyAction;
+    closeHistoryContextMenu();
+    if (action === 'top') {
+      const ids = loadHistoryOrder();
+      const base = ids.length ? ids.filter(id => chats.some(chat => chat.id === id)) : defaultHistoryOrder();
+      for (const chat of chats) if (!base.includes(chat.id)) base.push(chat.id);
+      const index = base.indexOf(chatId);
+      if (index > 0) {
+        base.splice(index, 1);
+        base.unshift(chatId);
+        if (saveHistoryOrder(base)) renderHistory();
+      } else showToast('La chat è già in cima.');
+    } else if (action === 'up') moveChatInHistory(chatId, -1);
+    else if (action === 'down') moveChatInHistory(chatId, 1);
+    else if (action === 'pin') {
+      const pinned = loadPinnedChatIds();
+      if (pinned.has(chatId)) pinned.delete(chatId);
+      else pinned.add(chatId);
+      if (savePinnedChatIds(pinned)) renderHistory();
+    } else if (action === 'rename') void renameChat(chatId);
+    else if (action === 'export') exportChat(chatId);
+    else if (action === 'delete') void deleteChat(chatId);
+  });
+  return menu;
+}
+
+function openHistoryContextMenu(chatId, x, y) {
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat) return;
+  const menu = ensureHistoryContextMenu();
+  historyMenuChatId = chatId;
+  const pinned = loadPinnedChatIds().has(chatId);
+  const pinButton = menu.querySelector('[data-history-action="pin"] span:last-child');
+  if (pinButton) pinButton.textContent = pinned ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti';
+  menu.hidden = false;
+  const width = menu.offsetWidth || 235;
+  const height = menu.offsetHeight || 350;
+  const left = Math.max(10, Math.min(x, window.innerWidth - width - 10));
+  const top = Math.max(10, Math.min(y, window.innerHeight - height - 10));
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+}
+
+function closeHistoryContextMenu() {
+  const menu = $('#historyContextMenu');
+  if (menu) menu.hidden = true;
+  historyMenuChatId = null;
+}
+
 function renderHistory() {
   const history = $('#history');
   if (!history) return;
+  closeHistoryContextMenu();
   history.replaceChildren();
 
   const pinned = loadPinnedChatIds();
   const query = historyQuery.trim();
+  const order = loadHistoryOrder();
   const visibleChats = chats
-    .filter(chat => (!showingPinned || pinned.has(chat.id)) &&
-      LorenzoChatFeatures.matchesChat(chat, query))
+    .filter(chat => (!showingPinned || pinned.has(chat.id)) && LorenzoChatFeatures.matchesChat(chat, query))
     .slice()
-    .reverse()
-    .sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)));
+    .sort((a, b) => {
+      const aIndex = order.indexOf(a.id);
+      const bIndex = order.indexOf(b.id);
+      if (order.length && (aIndex !== -1 || bIndex !== -1)) {
+        const aRank = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+        const bRank = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+        if (aRank !== bRank) return aRank - bRank;
+      } else {
+        const aPinned = Number(pinned.has(a.id));
+        const bPinned = Number(pinned.has(b.id));
+        if (aPinned !== bPinned) return bPinned - aPinned;
+        return chats.indexOf(b) - chats.indexOf(a);
+      }
+      return 0;
+    });
 
   for (const chat of visibleChats) {
     const row = document.createElement('div');
     row.className = 'history-row';
+    row.dataset.chatId = chat.id;
 
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'history-item' + (chat.id === activeId ? ' active' : '');
     open.textContent = chat.title || 'Nuova conversazione';
     open.classList.toggle('pinned', pinned.has(chat.id));
-    open.title = chat.title || 'Nuova conversazione';
-    open.onclick = () => openChat(chat.id);
-
-    const actions = document.createElement('div');
-    actions.className = 'history-actions';
-
-    const pin = document.createElement('button');
-    pin.type = 'button';
-    pin.className = 'history-action pin-chat';
-    pin.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg> ';
-    pin.classList.toggle('pinned', pinned.has(chat.id));
-    pin.title = pinned.has(chat.id) ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti (su questo dispositivo)';
-    pin.setAttribute('aria-label', pin.title + ': ' + (chat.title || 'Nuova conversazione'));
-    pin.setAttribute('aria-pressed', String(pinned.has(chat.id)));
-    pin.onclick = event => {
-      event.preventDefault();
-      event.stopPropagation();
-      const next = loadPinnedChatIds();
-      if (next.has(chat.id)) next.delete(chat.id);
-      else next.add(chat.id);
-      if (savePinnedChatIds(next)) renderHistory();
+    open.title = 'Apri: ' + (chat.title || 'Nuova conversazione') + ' · Tieni premuto per le opzioni';
+    open.setAttribute('aria-haspopup', 'menu');
+    open.setAttribute('aria-label', (chat.title || 'Nuova conversazione') + '. Tieni premuto per le opzioni.');
+    open.onclick = event => {
+      if (Date.now() < suppressHistoryClickUntil) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      openChat(chat.id);
     };
 
-    const rename = document.createElement('button');
-    rename.type = 'button';
-    rename.className = 'history-action rename-chat';
-    rename.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5M4 20l4.2-.9L19 8.3a2.1 2.1 0 0 0-3-3L5.2 16.1z"/></svg>';
-    rename.title = 'Rinomina conversazione';
-    rename.setAttribute('aria-label', 'Rinomina: ' + (chat.title || 'Nuova conversazione'));
-    rename.onclick = event => {
-      event.preventDefault();
-      event.stopPropagation();
-      void renameChat(chat.id);
+    const startHold = event => {
+      if (event.button !== undefined && event.button !== 0) return;
+      if (event.target.closest('button') && event.target !== open) return;
+      clearTimeout(historyPressTimer);
+      const pointX = event.clientX || (event.touches?.[0]?.clientX) || Math.round(window.innerWidth / 2);
+      const pointY = event.clientY || (event.touches?.[0]?.clientY) || Math.round(window.innerHeight / 2);
+      historyPressTimer = setTimeout(() => {
+        suppressHistoryClickUntil = Date.now() + 900;
+        openHistoryContextMenu(chat.id, pointX, pointY);
+      }, 520);
     };
-
-    const exportButton = document.createElement('button');
-    exportButton.type = 'button';
-    exportButton.className = 'history-action export-chat';
-    exportButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 20h14"/></svg>';
-    exportButton.title = 'Esporta conversazione in Markdown';
-    exportButton.setAttribute('aria-label', 'Esporta: ' + (chat.title || 'Nuova conversazione'));
-    exportButton.onclick = event => {
+    const stopHold = () => clearTimeout(historyPressTimer);
+    open.addEventListener('pointerdown', startHold);
+    open.addEventListener('pointerup', stopHold);
+    open.addEventListener('pointerleave', stopHold);
+    open.addEventListener('pointercancel', stopHold);
+    open.addEventListener('contextmenu', event => {
       event.preventDefault();
-      event.stopPropagation();
-      exportChat(chat.id);
-    };
+      suppressHistoryClickUntil = Date.now() + 900;
+      openHistoryContextMenu(chat.id, event.clientX, event.clientY);
+    });
 
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'history-delete';
-    remove.textContent = '×';
-    remove.title = 'Elimina conversazione';
-    remove.setAttribute('aria-label', 'Elimina conversazione: ' + (chat.title || 'Nuova conversazione'));
-    remove.onclick = event => {
-      event.preventDefault();
-      event.stopPropagation();
-      deleteChat(chat.id);
-    };
-
-    actions.append(pin, rename, exportButton, remove);
-    row.append(open, actions);
+    row.append(open);
     history.append(row);
   }
 
@@ -207,6 +320,16 @@ function renderHistory() {
           : 'Nessuna conversazione da mostrare.';
   }
 }
+
+document.addEventListener('pointerdown', event => {
+  const menu = $('#historyContextMenu');
+  if (menu && !menu.hidden && !menu.contains(event.target)) closeHistoryContextMenu();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeHistoryContextMenu();
+});
+window.addEventListener('resize', closeHistoryContextMenu);
+window.addEventListener('scroll', closeHistoryContextMenu, true);
 
 async function renameChat(chatId) {
   const chat = chats.find(item => item.id === chatId);
