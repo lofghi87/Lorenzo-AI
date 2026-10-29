@@ -4,7 +4,8 @@ Lorenzo AI è un assistente web costruito come progetto indipendente. L'app perm
 
 ## Componenti
 
-- **Frontend:** HTML, CSS e JavaScript; interfaccia responsive per telefono e computer.
+- **Frontend:** HTML, CSS e JavaScript; PWA installabile e interfaccia responsive premium per iPhone, iPad e desktop.
+- **Memoria personale:** note salvate esplicitamente dall'utente, private per account e disponibili come contesto nelle conversazioni.
 - **Autenticazione, database e Storage:** Supabase.
 - **Risposte e analisi di allegati:** Google Gemini, tramite endpoint server-side in `api/chat.js`.
 - **Generazione immagini:** Cloudflare Workers AI, tramite `api/generate-image.js`.
@@ -29,8 +30,11 @@ Le migrazioni SQL in `supabase/migrations/` vanno eseguite nel **SQL Editor** de
 1. `202610270001_image_generation_daily_limits.sql` — contatore immagini giornaliero.
 2. `202610270002_ai_chat_daily_limits.sql` — contatore persistente delle richieste chat per account o visitatore anonimo.
 3. `202610270003_private_chat_and_storage_policies.sql` — policy di accesso alla cronologia e agli allegati privati.
+4. `202610290001_user_memories.sql` — tabella privata della memoria personale e policy Row Level Security.
 
-La seconda migrazione è necessaria per i limiti persistenti e per il pannello di utilizzo chat. Se la tabella non è stata creata, l'API usa temporaneamente limiti in memoria per non bloccare del tutto il servizio, ma il contatore non è persistente tra tutte le istanze/serverless e il pannello mostra un errore. Prima di condividere il sito pubblicamente, applica tutte e tre le migrazioni e verifica il risultato.
+La memoria richiede l'applicazione della quarta migrazione. Gli utenti autenticati possono salvare fino a 30 note, ciascuna di massimo 400 caratteri, con il comando `Ricorda che ...`; `Dimentica che ...` rimuove una nota corrispondente e `Dimentica tutte le memorie` cancella l'intero elenco. Le note sono salvate solo su richiesta esplicita, possono essere gestite dalle Impostazioni e non sono disponibili agli utenti senza account. Evita di salvare password, chiavi API e dati molto sensibili.
+
+La seconda migrazione è necessaria per i limiti persistenti e per il pannello di utilizzo chat. Senza account sono consentite al massimo 5 richieste al giorno e 3 ogni 15 minuti; con account restano 40 richieste al giorno. Se la tabella non è stata creata, l'API usa temporaneamente limiti in memoria per non bloccare del tutto il servizio, ma il contatore non è persistente tra tutte le istanze/serverless e il pannello mostra un errore. Prima di condividere il sito pubblicamente, applica tutte e tre le migrazioni e verifica il risultato.
 
 ## Test
 
