@@ -412,7 +412,7 @@ function addMessage(role, content, scroll = true, attachmentNames = []) {
 
     attachmentNames.forEach(name => {
       const chip = document.createElement('div');
-      chip.textContent = '📎 ' + name;
+      chip.textContent = name;
       chip.style.cssText =
         'font-size:12px;padding:6px 9px;border-radius:10px;' +
         'background:rgba(127,127,127,.15);overflow-wrap:anywhere';
@@ -1494,7 +1494,7 @@ function setVoiceButtonState(listening) {
   button.setAttribute('aria-pressed', String(listening));
   button.title = listening ? 'Interrompi dettatura' : 'Dettatura vocale';
   button.setAttribute('aria-label', button.title);
-  button.innerHTML = listening ? '<span aria-hidden="true">■</span><span>Stop</span>' : '<span aria-hidden="true">🎙</span><span>Voce</span>';
+  button.innerHTML = listening ? '<span aria-hidden="true">■</span><span>Stop</span>' : '<svg viewBox="0 0 24 24" aria-hidden="true" class="tool-icon"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v3M8 22h8"/></svg><span>Voce</span>';
 }
 
 function startVoiceInput() {
@@ -1627,39 +1627,33 @@ async function refreshChatUsage() {
   const refresh = $('#refreshChatUsageBtn');
   if (!count || !fill || !meter || !reset || !detail) return;
 
-  if (!currentUser) {
-    count.textContent = '—';
-    fill.style.width = '0%';
-    meter.setAttribute('aria-valuenow', '0');
-    detail.textContent = 'Accedi per vedere il contatore del tuo account.';
-    reset.textContent = 'Le chat senza account hanno limiti temporanei più bassi.';
-    return;
-  }
-
   if (refresh) refresh.disabled = true;
   detail.textContent = 'Caricamento utilizzo…';
-
   try {
-    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
-    const accessToken = sessionData?.session?.access_token;
-    if (sessionError || !accessToken) throw new Error('Sessione scaduta. Accedi nuovamente.');
-
-    const response = await fetch('/api/chat-quota', {
-      headers: { Authorization: 'Bearer ' + accessToken }
-    });
+    const headers = {};
+    if (currentUser) {
+      const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (sessionError || !accessToken) throw new Error('Sessione scaduta. Accedi nuovamente.');
+      headers.Authorization = 'Bearer ' + accessToken;
+    }
+    const response = await fetch('/api/chat-quota', { headers });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'Limite chat non disponibile.');
 
-    const limit = Math.max(1, Number(data.limit) || 40);
+    const limit = Math.max(1, Number(data.limit) || (currentUser ? 40 : 5));
     const used = Math.max(0, Math.min(limit, Number(data.used) || 0));
     const remaining = Math.max(0, Math.min(limit, Number(data.remaining) || 0));
     count.textContent = remaining + ' di ' + limit;
     fill.style.width = (used / limit * 100) + '%';
     meter.setAttribute('aria-valuenow', String(used));
     meter.setAttribute('aria-valuemax', String(limit));
-    detail.textContent = used + ' ' + (used === 1 ? 'richiesta usata' : 'richieste usate') + ' oggi (UTC).';
-
-    if (data.resetsAt) {
+    detail.textContent = data.guest
+      ? used + ' di ' + limit + ' richieste gratuite usate oggi senza account.'
+      : used + ' ' + (used === 1 ? 'richiesta usata' : 'richieste usate') + ' oggi (UTC).';
+    if (data.guest) {
+      reset.textContent = 'Accedi per avere 40 richieste al giorno e salvare la memoria personale.';
+    } else if (data.resetsAt) {
       reset.textContent = 'Si azzera alle ' + new Date(data.resetsAt).toLocaleTimeString('it-IT', {
         hour: '2-digit', minute: '2-digit'
       }) + ' ora locale.';
@@ -1671,12 +1665,11 @@ async function refreshChatUsage() {
     fill.style.width = '0%';
     meter.setAttribute('aria-valuenow', '0');
     detail.textContent = error.message || 'Impossibile caricare il limite chat.';
-    reset.textContent = 'Se il problema continua, controlla la migration Supabase inclusa nel progetto.';
+    reset.textContent = 'Il contatore non è disponibile al momento. Riprova più tardi.';
   } finally {
     if (refresh) refresh.disabled = false;
   }
 }
-
 async function deleteAccount() {
   if (!currentUser || busy) return;
   const accepted = window.confirm(
