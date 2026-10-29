@@ -1726,14 +1726,19 @@ $('#settingsBtn').onclick = async () => {
 
   const session = data?.session;
   $('#settingsStatus').textContent = session
-    ? 'Account connesso: ' + session.user.email
+    ? 'Account connesso: ' + (session.user.email || 'account attivo')
     : 'Le chat senza account sono salvate solo su questo dispositivo.';
   $('#settingsTag').textContent = session ? 'Connessa' : 'Locale';
+  const accountStatus = $('#settingsAccountStatus');
+  if (accountStatus) accountStatus.textContent = session
+    ? (session.user.email || 'Account connesso')
+    : 'Accedi per sincronizzare chat e gestire il tuo account.';
   $('#settingsDialog').showModal();
   $('#deleteAccountBtn').hidden = !session;
   $('#deleteAccountBtn').disabled = false;
-  refreshImageUsage();
-  refreshChatUsage();
+  const signIn = $('#settingsSignInBtn');
+  if (signIn) signIn.hidden = Boolean(session);
+  if (typeof window.openSettingsPage === 'function') window.openSettingsPage('home');
 };
 
 $('#refreshUsageBtn')?.addEventListener('click', refreshImageUsage);
@@ -1746,14 +1751,14 @@ function toggleTheme() {
       document.body.classList.contains('light') ? 'light' : 'dark'
     );
   } catch {}
+  const isLight = document.body.classList.contains('light');
   const themeStatus = $('#settingsThemeStatus');
-  const themeSettingBtn = $('#settingsThemeBtn');
-  if (themeStatus) themeStatus.textContent = document.body.classList.contains('light') ? 'Tema chiaro attivo' : 'Tema scuro attivo';
-  if (themeSettingBtn) themeSettingBtn.textContent = document.body.classList.contains('light') ? 'Usa tema scuro' : 'Usa tema chiaro';
+  const themeSettingAction = $('#settingsThemeAction');
+  if (themeStatus) themeStatus.textContent = isLight ? 'Tema chiaro attivo' : 'Tema scuro attivo';
+  if (themeSettingAction) themeSettingAction.textContent = isLight ? 'Usa tema scuro' : 'Usa tema chiaro';
 }
 
-$('#themeBtn').onclick = toggleTheme;
-$('#settingsThemeBtn')?.addEventListener('click', toggleTheme);
+window.toggleTheme = toggleTheme;
 
 try {
   if (localStorage.getItem('lorenzo-ai-theme') === 'light') {
