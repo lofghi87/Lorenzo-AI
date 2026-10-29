@@ -1128,3 +1128,101 @@ body.light .history-context-menu {
 @media (prefers-reduced-motion: reduce) {
   .history-context-menu { animation: none; }
 }
+
+
+/* Ultimi override mobile: questo foglio è caricato dopo app-pwa.css. */
+@media (max-width: 760px) {
+  .topbar {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 7px;
+    justify-content: stretch;
+    min-width: 0;
+    flex-basis: 56px;
+    min-height: max(56px, calc(56px + var(--app-safe-top)));
+    padding-top: var(--app-safe-top);
+    padding-left: max(10px, var(--app-safe-left));
+    padding-right: max(10px, var(--app-safe-right));
+  }
+  .topbar .menu-btn {
+    position: relative;
+    grid-column: 1;
+    justify-self: start;
+    margin: 0;
+  }
+  .topbar .model-pill {
+    position: static;
+    inset: auto;
+    transform: none;
+    grid-column: 2;
+    justify-self: center;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .topbar .top-actions {
+    grid-column: 3;
+    justify-self: end;
+    display: flex;
+    flex: 0 0 auto;
+    min-width: 0;
+    max-width: 100%;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+    margin: 0;
+  }
+  .topbar .top-actions #pwaInstallButton,
+  .topbar .top-actions #accountBtn {
+    flex: 0 0 auto;
+    min-width: 0;
+    white-space: nowrap;
+  }
+}
+@media (max-width: 380px) {
+  .topbar {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    column-gap: 4px;
+  }
+  .topbar .model-pill {
+    gap: 4px;
+    padding: 6px 7px;
+    font-size: 10px;
+  }
+  .topbar .top-actions { gap: 3px; }
+  .topbar .top-actions #accountBtn { padding: 0 8px; min-width: 58px; }
+  .topbar .top-actions #pwaInstallButton { padding: 0 7px; font-size: 10px; }
+}
+body.is-standalone .topbar {
+  position: relative;
+  flex: 0 0 auto;
+}
+body.is-standalone .main {
+  height: var(--app-viewport-height);
+  min-height: 0;
+}
+body.is-standalone .chat-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-bottom: 8px;
+  scroll-padding-bottom: 18px;
+}
+body.is-standalone .composer-wrap {
+  position: relative;
+  inset: auto;
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 850px;
+  margin: 0 auto;
+  transform: none;
+}
+body.is-standalone,
+html.is-standalone,
+html.is-standalone body,
+html.is-standalone body * {
+  touch-action: pan-x pan-y;
+}
