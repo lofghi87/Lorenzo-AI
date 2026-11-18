@@ -67,6 +67,7 @@ function App() {
   const [renameItem, setRenameItem] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const [renameBusy, setRenameBusy] = useState(false);
+  const [openingVideoId, setOpeningVideoId] = useState(null);
   const videoElementRef = useRef(null);
 
   useEffect(() => {
@@ -195,16 +196,25 @@ function App() {
   }
 
   async function openEncryptedVideo(item) {
-    if (!vaultKey) return;
+    if (!vaultKey || openingVideoId) return;
+    setOpeningVideoId(item.id);
+    setError('');
     try {
       const result = await supabase.storage.from(BUCKET).download(item.path);
-      if (result.error) throw result.error;
+      if (result.error) throw new Error('Download non riuscito: ' + result.error.message);
+      if (!result.data || typeof result.data.arrayBuffer !== 'function') throw new Error('Supabase non ha restituito un file valido.');
       const decrypted = await decryptVideo(result.data, vaultKey, item.mime);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(URL.createObjectURL(decrypted));
+      const url = URL.createObjectURL(decrypted);
+      setPreviewUrl(url);
       setPreviewName(item.displayName || getDisplayName(item.name));
-    } catch {
-      setError('Decifratura non riuscita. Verifica la frase segreta: se l’hai dimenticata, i video cifrati non sono recuperabili.');
+    } catch (e) {
+      const detail = e?.name === 'OperationError'
+        ? 'La decifratura non è riuscita. Controlla di aver inserito la stessa frase segreta usata quando hai caricato il video.'
+        : (e?.message || 'Errore sconosciuto durante l’apertura.');
+      setError(detail);
+    } finally {
+      setOpeningVideoId(null);
     }
   }
 
@@ -349,8 +359,8 @@ function App() {
         ) : (
           <div className="video-grid">{visibleVideos.map(item => (
             <article className="video-card" key={item.id}>
-              <button className="video-preview encrypted-preview" onClick={() => item.encrypted ? openEncryptedVideo(item) : setError('Questo è un vecchio video non cifrato. Scaricalo e ricaricalo dopo la modifica per proteggerlo.') }><div className="video-placeholder"><LockKeyhole size={32}/><span>{item.encrypted ? 'CIFRATO' : 'NON CIFRATO'}</span></div><span className="private-tag"><LockKeyhole size={11}/> {item.encrypted ? 'AES-256' : 'VECCHIO FILE'}</span></button>
-              <div className="video-info"><h3 title={item.displayName}>{item.displayName}</h3><div className="video-meta"><span><Clock3 size={13}/>{formatDate(item.created_at)}</span><span>{formatSize(item.size)}</span></div><div className="video-actions"><button className="share-btn" onClick={() => item.encrypted ? openEncryptedVideo(item) : setError('Questo vecchio video non è cifrato.')}>{item.encrypted ? 'Apri video' : 'Da proteggere'}</button>{item.encrypted && <button className="delete-btn" onClick={() => beginRename(item)} title="Modifica nome"><Pencil size={16}/></button>}<button className="delete-btn" onClick={() => deleteVideo(item)} title="Elimina video"><Trash2 size={16}/></button></div></div>
+              <button className="video-preview encrypted-preview" disabled={openingVideoId !== null} onClick={() => item.encrypted ? openEncryptedVideo(item) : setError('Questo è un vecchio video non cifrato. Scaricalo e ricaricalo dopo la modifica per proteggerlo.') }><div className="video-placeholder">{openingVideoId === item.id ? <><LoaderCircle className="spin" size={32}/><span>APERTURA IN CORSO…</span></> : <><LockKeyhole size={32}/><span>{item.encrypted ? 'CIFRATO' : 'NON CIFRATO'}</span></>}</div><span className="private-tag"><LockKeyhole size={11}/> {item.encrypted ? 'AES-256' : 'VECCHIO FILE'}</span></button>
+              <div className="video-info"><h3 title={item.displayName}>{item.displayName}</h3><div className="video-meta"><span><Clock3 size={13}/>{formatDate(item.created_at)}</span><span>{formatSize(item.size)}</span></div><div className="video-actions"><button className="share-btn" disabled={openingVideoId !== null} onClick={() => item.encrypted ? openEncryptedVideo(item) : setError('Questo vecchio video non è cifrato.')}>{openingVideoId === item.id ? 'Apertura…' : item.encrypted ? 'Apri video' : 'Da proteggere'}</button>{item.encrypted && <button className="delete-btn" onClick={() => beginRename(item)} title="Modifica nome"><Pencil size={16}/></button>}<button className="delete-btn" onClick={() => deleteVideo(item)} title="Elimina video"><Trash2 size={16}/></button></div></div>
             </article>
           ))}</div>
         )}
