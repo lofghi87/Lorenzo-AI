@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createClient } from '@supabase/supabase-js';
-import { LockKeyhole, ShieldCheck, UploadCloud, Film, Share2, Trash2, LogOut, Eye, EyeOff, Copy, Check, X, Play, Clock3, HardDrive, LoaderCircle, KeyRound, Mail, ArrowUpRight, AlertCircle } from 'lucide-react';
+import { LockKeyhole, ShieldCheck, UploadCloud, Film, Share2, Trash2, LogOut, Eye, EyeOff, Copy, Check, X, Play, Clock3, HardDrive, LoaderCircle, KeyRound, Mail, ArrowUpRight, AlertCircle, Pencil, Maximize2 } from 'lucide-react';
 import './styles.css';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -9,6 +9,10 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 const BUCKET = 'vault-videos';
 const SHARE_SECONDS = 60 * 60;
+
+function getDisplayName(name) {
+  return name.replace(/^[0-9a-f-]{30,}-/i, '').replace(/\\.vlt$/i, '');
+}
 
 function getOriginalVideoMime(name) {
   const match = name.replace(/\.vlt$/i, '').match(/\.([a-z0-9]+)$/i);
@@ -60,6 +64,10 @@ function App() {
   const [unlockBusy, setUnlockBusy] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewName, setPreviewName] = useState('');
+  const [renameItem, setRenameItem] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameBusy, setRenameBusy] = useState(false);
+  const videoElementRef = useRef(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -87,7 +95,7 @@ function App() {
       return;
     }
     const entries = (data || []).filter(item => item.name && item.id);
-    const withUrls = entries.map(item => ({ ...item, path: session.user.id + '/' + item.name, encrypted: item.name.endsWith('.vlt'), size: item.metadata?.size || 0, mime: item.name.endsWith('.vlt') ? getOriginalVideoMime(item.name) : (item.metadata?.mimetype || '') }));
+    const withUrls = entries.map(item => ({ ...item, path: session.user.id + '/' + item.name, encrypted: item.name.endsWith('.vlt'), displayName: getDisplayName(item.name), size: item.metadata?.size || 0, mime: item.name.endsWith('.vlt') ? getOriginalVideoMime(item.name) : (item.metadata?.mimetype || '') }));
     setVideos(withUrls);
     setLoadingVideos(false);
   }, [session, vaultKey]);
@@ -194,10 +202,44 @@ function App() {
       const decrypted = await decryptVideo(result.data, vaultKey, item.mime);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(URL.createObjectURL(decrypted));
-      setPreviewName(item.name.replace(/^[0-9a-f-]{30,}-/i, '').replace(/\\.vlt$/i, ''));
+      setPreviewName(item.displayName || getDisplayName(item.name));
     } catch {
       setError('Decifratura non riuscita. Verifica la frase segreta: se l’hai dimenticata, i video cifrati non sono recuperabili.');
     }
+  }
+
+  function beginRename(item) {
+    setRenameItem(item);
+    setRenameValue((item.displayName || getDisplayName(item.name)).replace(/\\.[^.]+$/, ''));
+    setError('');
+  }
+
+  async function saveRename(event) {
+    event.preventDefault();
+    if (!renameItem || !session?.user?.id) return;
+    const clean = renameValue.trim().normalize('NFKC').replace(/[\\/\\\\]/g, '-').replace(/[<>:"|?*]/g, '-').replace(/\\s+/g, ' ').slice(0, 100);
+    if (!clean) { setError('Inserisci un nome valido.'); return; }
+    if (!renameItem.encrypted) { setError('Puoi rinominare solo i video cifrati.'); return; }
+    const oldDisplay = renameItem.displayName || getDisplayName(renameItem.name);
+    const extMatch = oldDisplay.match(/(\\.[^.]+)$/);
+    const extension = extMatch ? extMatch[1] : '';
+    const newName = crypto.randomUUID() + '-' + clean + extension + '.vlt';
+    const newPath = session.user.id + '/' + newName;
+    setRenameBusy(true); setError('');
+    const { error: moveError } = await supabase.storage.from(BUCKET).move(renameItem.path, newPath);
+    setRenameBusy(false);
+    if (moveError) { setError('Non sono riuscito a rinominare il video: ' + moveError.message); return; }
+    setRenameItem(null); setRenameValue('');
+    await loadVideos();
+  }
+
+  async function requestVideoFullscreen() {
+    const video = videoElementRef.current;
+    if (!video) return;
+    try {
+      if (video.requestFullscreen) await video.requestFullscreen();
+      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+    } catch { setError('Schermo intero non disponibile in questo browser.'); }
   }
 
   async function createShare(item) {
@@ -238,7 +280,7 @@ function App() {
     }
   }
 
-  const visibleVideos = useMemo(() => videos.filter(v => v.name.toLowerCase().includes(search.toLowerCase())), [videos, search]);
+  const visibleVideos = useMemo(() => videos.filter(v => (v.displayName || v.name).toLowerCase().includes(search.toLowerCase())), [videos, search]);
   const totalBytes = videos.reduce((sum, item) => sum + item.size, 0);
   const formatSize = bytes => bytes < 1024 * 1024 ? (bytes / 1024).toFixed(0) + ' KB' : (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   const formatDate = value => value ? new Date(value).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -308,13 +350,14 @@ function App() {
           <div className="video-grid">{visibleVideos.map(item => (
             <article className="video-card" key={item.id}>
               <button className="video-preview encrypted-preview" onClick={() => item.encrypted ? openEncryptedVideo(item) : setError('Questo è un vecchio video non cifrato. Scaricalo e ricaricalo dopo la modifica per proteggerlo.') }><div className="video-placeholder"><LockKeyhole size={32}/><span>{item.encrypted ? 'CIFRATO' : 'NON CIFRATO'}</span></div><span className="private-tag"><LockKeyhole size={11}/> {item.encrypted ? 'AES-256' : 'VECCHIO FILE'}</span></button>
-              <div className="video-info"><h3 title={item.name}>{item.name.replace(/^[0-9a-f-]{30,}-/i,'')}</h3><div className="video-meta"><span><Clock3 size={13}/>{formatDate(item.created_at)}</span><span>{formatSize(item.size)}</span></div><div className="video-actions"><button className="share-btn" onClick={() => item.encrypted ? openEncryptedVideo(item) : setError('Questo vecchio video non è cifrato.')}>{item.encrypted ? 'Apri video' : 'Da proteggere'}</button><button className="delete-btn" onClick={() => deleteVideo(item)} title="Elimina video"><Trash2 size={16}/></button></div></div>
+              <div className="video-info"><h3 title={item.displayName}>{item.displayName}</h3><div className="video-meta"><span><Clock3 size={13}/>{formatDate(item.created_at)}</span><span>{formatSize(item.size)}</span></div><div className="video-actions"><button className="share-btn" onClick={() => item.encrypted ? openEncryptedVideo(item) : setError('Questo vecchio video non è cifrato.')}>{item.encrypted ? 'Apri video' : 'Da proteggere'}</button>{item.encrypted && <button className="delete-btn" onClick={() => beginRename(item)} title="Modifica nome"><Pencil size={16}/></button>}<button className="delete-btn" onClick={() => deleteVideo(item)} title="Elimina video"><Trash2 size={16}/></button></div></div>
             </article>
           ))}</div>
         )}
       </section>
       <footer className="dash-footer"><span><ShieldCheck size={14}/> I nuovi caricamenti sono cifrati prima di arrivare a Supabase.</span><span>VAULT · CLIENT-SIDE ENCRYPTION</span></footer>
-      {previewUrl && <div className="modal-backdrop" onClick={() => {URL.revokeObjectURL(previewUrl);setPreviewUrl('');setPreviewName('');}}><div className="share-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => {URL.revokeObjectURL(previewUrl);setPreviewUrl('');setPreviewName('');}}><X size={18}/></button><div className="section-kicker">DECIFRATO SOLO IN MEMORIA</div><h2>{previewName}</h2><video src={previewUrl} controls autoPlay playsInline style={{width:'100%',maxHeight:'60vh',marginTop:16,background:'#000'}} /></div></div>}
+      {previewUrl && <div className="modal-backdrop" onClick={() => {URL.revokeObjectURL(previewUrl);setPreviewUrl('');setPreviewName('');}}><div className="share-modal video-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => {URL.revokeObjectURL(previewUrl);setPreviewUrl('');setPreviewName('');}}><X size={18}/></button><div className="section-kicker">DECIFRATO SOLO IN MEMORIA</div><h2>{previewName}</h2><div className="video-player-wrap"><video ref={videoElementRef} src={previewUrl} controls autoPlay playsInline style={{width:'100%',maxHeight:'60vh',marginTop:16,background:'#000'}}/><button className="fullscreen-btn" onClick={requestVideoFullscreen}><Maximize2 size={17}/> Schermo intero</button></div></div></div>}
+      {renameItem && <div className="modal-backdrop" onClick={() => !renameBusy && setRenameItem(null)}><div className="share-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => !renameBusy && setRenameItem(null)}><X size={18}/></button><div className="modal-icon"><Pencil size={21}/></div><div className="section-kicker">MODIFICA VIDEO</div><h2>Rinomina video</h2><p>Modifica il nome con cui compare nella tua libreria. Il contenuto cifrato non viene modificato.</p><form onSubmit={saveRename}><input className="rename-input" value={renameValue} onChange={e => setRenameValue(e.target.value)} maxLength={100} autoFocus placeholder="Nome del video"/><button className="primary-btn copy-btn" disabled={renameBusy}>{renameBusy ? <LoaderCircle className="spin" size={17}/> : <Check size={17}/>} Salva nome</button></form></div></div>}
       {shareItem && <div className="modal-backdrop" onClick={() => {setShareItem(null);setShareUrl('');}}><div className="share-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => {setShareItem(null);setShareUrl('');}}><X size={18}/></button><div className="modal-icon"><Share2 size={21}/></div><div className="section-kicker">CONDIVISIONE SICURA</div><h2>Condividi questo video</h2><p>Chi riceve il link potrà vedere il video senza accedere al tuo account. Il link scade automaticamente dopo un'ora.</p><div className="share-file"><Film size={17}/><span>{shareItem.name.replace(/^[0-9a-f-]{30,}-/i,'')}</span></div><div className="share-link">{shareUrl || 'Creo il link sicuro…'}</div><button className="primary-btn copy-btn" disabled={!shareUrl} onClick={copyShare}>{copied ? <><Check size={17}/> Link copiato</> : <><Copy size={17}/> Copia link</>}</button><div className="expiry-note"><Clock3 size={14}/> Link valido per 60 minuti. Può essere inoltrato da chi lo riceve.</div></div></div>}
     </main>
   );
