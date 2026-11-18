@@ -56,6 +56,7 @@ function App() {
   const [search, setSearch] = useState('');
   const [vaultKey, setVaultKey] = useState(null);
   const [vaultPassphrase, setVaultPassphrase] = useState('');
+  const [vaultPassphraseConfirm, setVaultPassphraseConfirm] = useState('');
   const [unlockBusy, setUnlockBusy] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewName, setPreviewName] = useState('');
@@ -103,10 +104,18 @@ function App() {
     setAuthBusy(true);
     try {
       if (mode === 'signup') {
+        if (vaultPassphrase.length < 12) throw new Error('La frase segreta deve contenere almeno 12 caratteri.');
+        if (vaultPassphrase !== vaultPassphraseConfirm) throw new Error('Le due frasi segrete non coincidono.');
         const { data, error: signError } = await supabase.auth.signUp({ email: email.trim(), password });
         if (signError) throw signError;
-        if (data.session) setMessage('Account creato. La cassaforte è pronta.');
-        else setMessage('Controlla la tua email e conferma la registrazione per entrare.');
+        if (data.session && data.user?.id) {
+          setVaultKey(await deriveVaultKey(vaultPassphrase, data.user.id));
+          setVaultPassphrase(''); setVaultPassphraseConfirm('');
+          setMessage('Account creato e cassaforte inizializzata. Conserva la frase segreta: non è recuperabile.');
+        } else {
+          setVaultPassphraseConfirm('');
+          setMessage('Account creato. Conferma l’email, poi accedi e inserisci la stessa frase segreta: non viene conservata durante la conferma.');
+        }
       } else {
         const { error: signError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (signError) throw signError;
@@ -256,10 +265,11 @@ function App() {
             <div className="input-wrap"><Mail size={17}/><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="nome@email.com" autoComplete="email" required /></div>
             <label>Password</label>
             <div className="input-wrap"><KeyRound size={17}/><input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Almeno 8 caratteri" minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required/><button className="eye-btn" type="button" onClick={() => setShowPassword(v => !v)} aria-label="Mostra password">{showPassword ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div>
+            {mode === 'signup' && <><label>Frase segreta di cifratura</label><div className="input-wrap"><KeyRound size={17}/><input type="password" value={vaultPassphrase} onChange={e => setVaultPassphrase(e.target.value)} placeholder="Almeno 12 caratteri" minLength={12} autoComplete="new-password" required/></div><label>Conferma frase segreta</label><div className="input-wrap"><KeyRound size={17}/><input type="password" value={vaultPassphraseConfirm} onChange={e => setVaultPassphraseConfirm(e.target.value)} placeholder="Ripeti la frase segreta" minLength={12} autoComplete="new-password" required/></div><p className="card-sub">Questa frase cifra i video. È diversa dalla password dell’account e non può essere recuperata se la dimentichi.</p></>}
             <button className="primary-btn auth-submit" disabled={authBusy}>{authBusy ? <LoaderCircle className="spin" size={18}/> : <>{mode === 'login' ? 'Entra nella cassaforte' : 'Crea account'} <ArrowUpRight size={17}/></>}</button>
           </form>
           {mode === 'login' && <button className="text-btn forgot" onClick={handleReset}>Hai dimenticato la password?</button>}
-          <div className="auth-switch">{mode === 'login' ? 'Non hai ancora un account?' : 'Hai già un account?'} <button onClick={() => {setMode(mode === 'login' ? 'signup' : 'login');setError('');setMessage('');}}>{mode === 'login' ? 'Registrati' : 'Accedi'}</button></div>
+          <div className="auth-switch">{mode === 'login' ? 'Non hai ancora un account?' : 'Hai già un account?'} <button onClick={() => {setMode(mode === 'login' ? 'signup' : 'login');setError('');setMessage('');setVaultPassphrase('');setVaultPassphraseConfirm('');}}>{mode === 'login' ? 'Registrati' : 'Accedi'}</button></div>
           {error && <div className="notice error"><AlertCircle size={16}/>{error}</div>}
           {message && <div className="notice success"><Check size={16}/>{message}</div>}
           <div className="auth-foot"><LockKeyhole size={13}/> Le tue credenziali non vengono mostrate né condivise.</div>
