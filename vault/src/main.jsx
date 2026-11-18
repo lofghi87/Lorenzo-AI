@@ -11,7 +11,7 @@ const BUCKET = 'vault-videos';
 const SHARE_SECONDS = 60 * 60;
 
 function getDisplayName(name) {
-  return name.replace(/^[0-9a-f-]{30,}-/i, '').replace(/\\.vlt$/i, '');
+  return name.replace(/^[0-9a-f-]{30,}-/i, '').replace(/\.vlt$/i, '');
 }
 
 function getOriginalVideoMime(name) {
@@ -210,18 +210,18 @@ function App() {
 
   function beginRename(item) {
     setRenameItem(item);
-    setRenameValue((item.displayName || getDisplayName(item.name)).replace(/\\.[^.]+$/, ''));
+    setRenameValue((item.displayName || getDisplayName(item.name)).replace(/\.[^.]+$/, ''));
     setError('');
   }
 
   async function saveRename(event) {
     event.preventDefault();
     if (!renameItem || !session?.user?.id) return;
-    const clean = renameValue.trim().normalize('NFKC').replace(/[\\/\\\\]/g, '-').replace(/[<>:"|?*]/g, '-').replace(/\\s+/g, ' ').slice(0, 100);
+    const clean = renameValue.trim().normalize('NFKC').replace(/[\/\\]/g, '-').replace(/[<>:"|?*]/g, '-').replace(/\s+/g, ' ').slice(0, 100);
     if (!clean) { setError('Inserisci un nome valido.'); return; }
     if (!renameItem.encrypted) { setError('Puoi rinominare solo i video cifrati.'); return; }
     const oldDisplay = renameItem.displayName || getDisplayName(renameItem.name);
-    const extMatch = oldDisplay.match(/(\\.[^.]+)$/);
+    const extMatch = oldDisplay.match(/(\.[^.]+)$/);
     const extension = extMatch ? extMatch[1] : '';
     const newName = crypto.randomUUID() + '-' + clean + extension + '.vlt';
     const newPath = session.user.id + '/' + newName;
