@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createClient } from '@supabase/supabase-js';
-import { LockKeyhole, ShieldCheck, UploadCloud, Film, Share2, Trash2, LogOut, Eye, EyeOff, Copy, Check, X, Play, Clock3, HardDrive, LoaderCircle, KeyRound, Mail, ArrowUpRight, AlertCircle, Pencil, Maximize2, Download } from 'lucide-react';
+import { LockKeyhole, ShieldCheck, UploadCloud, Film, Share2, Trash2, LogOut, Eye, EyeOff, Copy, Check, X, Play, Clock3, HardDrive, LoaderCircle, KeyRound, Mail, ArrowUpRight, AlertCircle, Pencil, Maximize2, Download, UserRound, Activity, Smartphone, FolderPlus, ArrowDownWideNarrow } from 'lucide-react';
 import './styles.css';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -49,6 +49,65 @@ function bytesToBase64(bytes) {
 function base64ToBytes(value) {
   const binary = atob(value);
   return Uint8Array.from(binary, character => character.charCodeAt(0));
+}
+
+function createVideoPoster(blob) {
+  return new Promise(resolve => {
+    const video = document.createElement('video');
+    const objectUrl = URL.createObjectURL(blob);
+    let finished = false;
+    const timeout = window.setTimeout(() => finish(''), 5000);
+    function finish(result) {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timeout);
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(objectUrl);
+      resolve(result);
+    }
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.addEventListener('loadedmetadata', () => {
+      if (!Number.isFinite(video.duration) || video.duration <= 0 || !video.videoWidth) {
+        finish('');
+        return;
+      }
+      try { video.currentTime = Math.min(0.2, video.duration / 3); }
+      catch { finish(''); }
+    }, { once: true });
+    video.addEventListener('seeked', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const scale = Math.min(1, 480 / video.videoWidth);
+        canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+        canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+        const context = canvas.getContext('2d');
+        if (!context) return finish('');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        finish(canvas.toDataURL('image/jpeg', 0.68));
+      } catch { finish(''); }
+    }, { once: true });
+    video.addEventListener('error', () => finish(''), { once: true });
+    video.src = objectUrl;
+    video.load();
+  });
+}
+
+function getDeviceLabel() {
+  const ua = navigator.userAgent || '';
+  const platform = /iPad/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    ? 'iPad'
+    : /iPhone|iPod/.test(ua) ? 'iPhone'
+    : /Android/.test(ua) ? 'Dispositivo Android'
+    : /Macintosh|Mac OS X/.test(ua) ? 'Mac'
+    : /Windows/.test(ua) ? 'PC Windows'
+    : /Linux/.test(ua) ? 'Computer Linux'
+    : 'Questo dispositivo';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  return platform + ' · ' + browser;
 }
 
 function parseIncomingShare() {
@@ -108,6 +167,21 @@ function App() {
   const [incomingShareVideoUrl, setIncomingShareVideoUrl] = useState('');
   const [incomingShareFile, setIncomingShareFile] = useState(null);
   const [incomingShareError, setIncomingShareError] = useState('');
+  const [thumbnails, setThumbnails] = useState({});
+  const [folders, setFolders] = useState(['Generale']);
+  const [activeFolder, setActiveFolder] = useState('Tutte');
+  const [sortMode, setSortMode] = useState('newest');
+  const [encryptionFilter, setEncryptionFilter] = useState('all');
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountName, setAccountName] = useState(session?.user?.user_metadata?.display_name || '');
+  const [accountEmail, setAccountEmail] = useState('');
+  const [newAccountPassword, setNewAccountPassword] = useState('');
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [securityLoading, setSecurityLoading] = useState(false);
+  const [activity, setActivity] = useState([]);
+  const [shares, setShares] = useState([]);
+  const [folderCreateBusy, setFolderCreateBusy] = useState(false);
   const videoElementRef = useRef(null);
 
   useEffect(() => {
@@ -170,7 +244,20 @@ function App() {
       return;
     }
     const entries = (data || []).filter(item => item.name && item.id);
-    const withUrls = entries.map(item => ({ ...item, path: session.user.id + '/' + item.name, encrypted: item.name.endsWith('.vlt'), displayName: getDisplayName(item.name), size: item.metadata?.size || 0, mime: item.name.endsWith('.vlt') ? getOriginalVideoMime(item.name) : (item.metadata?.mimetype || '') }));
+    const { data: metadataRows, error: metadataError } = await supabase
+      .from('vault_video_meta')
+      .select('storage_path,folder_name')
+      .eq('user_id', session.user.id);
+    if (metadataError) {
+      setError('Non riesco a caricare le cartelle: ' + metadataError.message);
+      setLoadingVideos(false);
+      return;
+    }
+    const folderByPath = new Map((metadataRows || []).map(row => [row.storage_path, row.folder_name]));
+    const withUrls = entries.map(item => {
+      const path = session.user.id + '/' + item.name;
+      return { ...item, path, folder: folderByPath.get(path) || 'Generale', encrypted: item.name.endsWith('.vlt'), displayName: getDisplayName(item.name), size: item.metadata?.size || 0, mime: item.name.endsWith('.vlt') ? getOriginalVideoMime(item.name) : (item.metadata?.mimetype || '') };
+    });
     setVideos(withUrls);
     setLoadingVideos(false);
   }, [session, vaultKey]);
