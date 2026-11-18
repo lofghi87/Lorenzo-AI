@@ -10,6 +10,25 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const BUCKET = 'vault-videos';
 const SHARE_SECONDS = 60 * 60;
 
+async function deriveVaultKey(passphrase, userId) {
+  const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: new TextEncoder().encode('VAULT-v1:' + userId), iterations: 310000, hash: 'SHA-256' }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+
+async function encryptVideo(file, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plain = await file.arrayBuffer();
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain);
+  return new Blob([new Uint8Array([86, 76, 84, 49]), iv, cipher], { type: 'application/octet-stream' });
+}
+
+async function decryptVideo(blob, key, mime) {
+  const data = new Uint8Array(await blob.arrayBuffer());
+  if (data.length < 32 || data[0] !== 86 || data[1] !== 76 || data[2] !== 84 || data[3] !== 49) throw new Error('Formato cifrato non riconosciuto.');
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: data.slice(4, 16) }, key, data.slice(16));
+  return new Blob([plain], { type: mime || 'video/mp4' });
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(false);
@@ -28,6 +47,11 @@ function App() {
   const [shareUrl, setShareUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [search, setSearch] = useState('');
+  const [vaultKey, setVaultKey] = useState(null);
+  const [vaultPassphrase, setVaultPassphrase] = useState('');
+  const [unlockBusy, setUnlockBusy] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewName, setPreviewName] = useState('');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -41,7 +65,7 @@ function App() {
   }, []);
 
   const loadVideos = useCallback(async () => {
-    if (!session?.user?.id) return;
+    if (!session?.user?.id || !vaultKey) return;
     setLoadingVideos(true);
     setError('');
     const { data, error: listError } = await supabase.storage.from(BUCKET).list(session.user.id, {
@@ -55,19 +79,15 @@ function App() {
       return;
     }
     const entries = (data || []).filter(item => item.name && item.id);
-    const withUrls = await Promise.all(entries.map(async item => {
-      const path = session.user.id + '/' + item.name;
-      const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 15 * 60);
-      return { ...item, path, previewUrl: signed?.signedUrl || '', size: item.metadata?.size || 0, mime: item.metadata?.mimetype || '' };
-    }));
+    const withUrls = entries.map(item => ({ ...item, path: session.user.id + '/' + item.name, encrypted: item.name.endsWith('.vlt'), size: item.metadata?.size || 0, mime: item.metadata?.mimetype || '' }));
     setVideos(withUrls);
     setLoadingVideos(false);
-  }, [session]);
+  }, [session, vaultKey]);
 
   useEffect(() => {
-    if (session) loadVideos();
+    if (session && vaultKey) loadVideos();
     else setVideos([]);
-  }, [session, loadVideos]);
+  }, [session, vaultKey, loadVideos]);
 
   async function handleAuth(event) {
     event.preventDefault();
@@ -102,7 +122,19 @@ function App() {
     else setMessage('Se l’indirizzo è registrato, riceverai un’email per reimpostare la password.');
   }
 
+  async function unlockVault(event) {
+    event.preventDefault();
+    if (vaultPassphrase.length < 12) { setError('Usa una frase segreta di almeno 12 caratteri.'); return; }
+    setUnlockBusy(true); setError('');
+    try { setVaultKey(await deriveVaultKey(vaultPassphrase, session.user.id)); setVaultPassphrase(''); }
+    catch { setError('Non riesco a sbloccare la cassaforte.'); }
+    finally { setUnlockBusy(false); }
+  }
+
   async function handleLogout() {
+    setVaultKey(null);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(''); setPreviewName('');
     await supabase.auth.signOut();
     setShareItem(null);
     setShareUrl('');
@@ -117,19 +149,19 @@ function App() {
       setError('Puoi caricare soltanto file video.');
       return;
     }
+    if (!vaultKey) { setError('Sblocca prima la cassaforte con la tua frase segreta.'); return; }
     setUploading(true);
     setError('');
     for (const file of selected) {
       setProgressName(file.name);
       const safeName = file.name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-').slice(-100) || 'video';
-      const path = session.user.id + '/' + crypto.randomUUID() + '-' + safeName;
-      const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, {
-        cacheControl: '60',
-        contentType: file.type,
-        upsert: false
-      });
-      if (uploadError) {
-        setError('Errore durante il caricamento di ' + file.name + ': ' + uploadError.message);
+      const path = session.user.id + '/' + crypto.randomUUID() + '-' + safeName + '.vlt';
+      try {
+        const encrypted = await encryptVideo(file, vaultKey);
+        const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, encrypted, { cacheControl: '0', contentType: 'application/octet-stream', upsert: false });
+        if (uploadError) throw uploadError;
+      } catch (uploadError) {
+        setError('Errore durante la cifratura o il caricamento di ' + file.name + ': ' + (uploadError.message || 'errore sconosciuto'));
         break;
       }
     }
@@ -138,7 +170,22 @@ function App() {
     await loadVideos();
   }
 
+  async function openEncryptedVideo(item) {
+    if (!vaultKey) return;
+    try {
+      const result = await supabase.storage.from(BUCKET).download(item.path);
+      if (result.error) throw result.error;
+      const decrypted = await decryptVideo(result.data, vaultKey, item.mime);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(URL.createObjectURL(decrypted));
+      setPreviewName(item.name.replace(/^[0-9a-f-]{30,}-/i, '').replace(/\\.vlt$/i, ''));
+    } catch {
+      setError('Decifratura non riuscita. Verifica la frase segreta: se l’hai dimenticata, i video cifrati non sono recuperabili.');
+    }
+  }
+
   async function createShare(item) {
+    if (item.encrypted) { setError('La condivisione tramite link è disattivata per i video cifrati.'); return; }
     setError('');
     setShareItem(item);
     setShareUrl('');
@@ -215,6 +262,10 @@ function App() {
     </main>
   );
 
+  if (!vaultKey) return (
+    <main className="auth-page"><div className="auth-glow"/><div className="auth-top"><div className="brand"><div className="brand-icon"><LockKeyhole size={19}/></div><span>VAULT</span></div><button className="text-btn" onClick={handleLogout}>Esci</button></div><section className="auth-layout" style={{display:'flex',justifyContent:'center'}}><div className="auth-card" style={{width:'min(100%,440px)'}}><div className="card-lock"><KeyRound size={22}/></div><h2>Sblocca la cifratura</h2><p className="card-sub">Inserisci la tua frase segreta Vault. Non viene inviata né salvata sui server. Usa la stessa frase su ogni dispositivo.</p><form onSubmit={unlockVault}><label>Frase segreta (almeno 12 caratteri)</label><div className="input-wrap"><KeyRound size={17}/><input type="password" value={vaultPassphrase} onChange={e => setVaultPassphrase(e.target.value)} autoComplete="off" minLength={12} required placeholder="La tua frase segreta"/></div><button className="primary-btn auth-submit" disabled={unlockBusy}>{unlockBusy ? <LoaderCircle className="spin" size={18}/> : 'Sblocca Vault'}</button></form>{error && <div className="notice error"><AlertCircle size={16}/>{error}</div>}<div className="auth-foot"><ShieldCheck size={13}/> Se dimentichi la frase segreta, i video cifrati non si possono recuperare.</div></div></section></main>
+  );
+
   return (
     <main className="dashboard">
       <header className="dash-header">
@@ -222,7 +273,7 @@ function App() {
         <div className="header-right"><span className="secure-pill"><span className="pulse-dot"/> ARCHIVIO PROTETTO</span><div className="user-chip">{session.user.email?.slice(0,1).toUpperCase()}</div><button className="icon-btn" onClick={handleLogout} title="Esci"><LogOut size={18}/></button></div>
       </header>
       <section className="welcome">
-        <div><div className="eyebrow"><span className="pulse-dot"/> IL TUO SPAZIO PERSONALE</div><h1>La tua <span>cassaforte.</span></h1><p>Qui i tuoi video sono visibili soltanto dal tuo account.</p></div>
+        <div><div className="eyebrow"><span className="pulse-dot"/> IL TUO SPAZIO PERSONALE</div><h1>La tua <span>cassaforte.</span></h1><p>I nuovi video vengono cifrati sul dispositivo prima del caricamento.</p></div>
         <label className="upload-btn"><UploadCloud size={18}/> Carica video<input type="file" accept="video/*" multiple hidden onChange={handleUpload}/></label>
       </section>
       <section className="stats">
@@ -239,13 +290,14 @@ function App() {
         ) : (
           <div className="video-grid">{visibleVideos.map(item => (
             <article className="video-card" key={item.id}>
-              <div className="video-preview">{item.previewUrl ? <video src={item.previewUrl} preload="metadata" controls playsInline /> : <div className="video-placeholder"><Film size={32}/></div>}<span className="private-tag"><LockKeyhole size={11}/> PRIVATO</span></div>
-              <div className="video-info"><h3 title={item.name}>{item.name.replace(/^[0-9a-f-]{30,}-/i,'')}</h3><div className="video-meta"><span><Clock3 size={13}/>{formatDate(item.created_at)}</span><span>{formatSize(item.size)}</span></div><div className="video-actions"><button className="share-btn" onClick={() => createShare(item)}><Share2 size={15}/> Condividi</button><button className="delete-btn" onClick={() => deleteVideo(item)} title="Elimina video"><Trash2 size={16}/></button></div></div>
+              <button className="video-preview encrypted-preview" onClick={() => item.encrypted ? openEncryptedVideo(item) : setError('Questo è un vecchio video non cifrato. Scaricalo e ricaricalo dopo la modifica per proteggerlo.') }><div className="video-placeholder"><LockKeyhole size={32}/><span>{item.encrypted ? 'CIFRATO' : 'NON CIFRATO'}</span></div><span className="private-tag"><LockKeyhole size={11}/> {item.encrypted ? 'AES-256' : 'VECCHIO FILE'}</span></button>
+              <div className="video-info"><h3 title={item.name}>{item.name.replace(/^[0-9a-f-]{30,}-/i,'')}</h3><div className="video-meta"><span><Clock3 size={13}/>{formatDate(item.created_at)}</span><span>{formatSize(item.size)}</span></div><div className="video-actions"><button className="share-btn" onClick={() => item.encrypted ? openEncryptedVideo(item) : setError('Questo vecchio video non è cifrato.')}>{item.encrypted ? 'Apri video' : 'Da proteggere'}</button><button className="delete-btn" onClick={() => deleteVideo(item)} title="Elimina video"><Trash2 size={16}/></button></div></div>
             </article>
           ))}</div>
         )}
       </section>
-      <footer className="dash-footer"><span><ShieldCheck size={14}/> I tuoi file sono conservati in un archivio privato.</span><span>VAULT · PRIVATE VIDEO STORAGE</span></footer>
+      <footer className="dash-footer"><span><ShieldCheck size={14}/> I nuovi caricamenti sono cifrati prima di arrivare a Supabase.</span><span>VAULT · CLIENT-SIDE ENCRYPTION</span></footer>
+      {previewUrl && <div className="modal-backdrop" onClick={() => {URL.revokeObjectURL(previewUrl);setPreviewUrl('');setPreviewName('');}}><div className="share-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => {URL.revokeObjectURL(previewUrl);setPreviewUrl('');setPreviewName('');}}><X size={18}/></button><div className="section-kicker">DECIFRATO SOLO IN MEMORIA</div><h2>{previewName}</h2><video src={previewUrl} controls autoPlay playsInline style={{width:'100%',maxHeight:'60vh',marginTop:16,background:'#000'}} /></div></div>}
       {shareItem && <div className="modal-backdrop" onClick={() => {setShareItem(null);setShareUrl('');}}><div className="share-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => {setShareItem(null);setShareUrl('');}}><X size={18}/></button><div className="modal-icon"><Share2 size={21}/></div><div className="section-kicker">CONDIVISIONE SICURA</div><h2>Condividi questo video</h2><p>Chi riceve il link potrà vedere il video senza accedere al tuo account. Il link scade automaticamente dopo un'ora.</p><div className="share-file"><Film size={17}/><span>{shareItem.name.replace(/^[0-9a-f-]{30,}-/i,'')}</span></div><div className="share-link">{shareUrl || 'Creo il link sicuro…'}</div><button className="primary-btn copy-btn" disabled={!shareUrl} onClick={copyShare}>{copied ? <><Check size={17}/> Link copiato</> : <><Copy size={17}/> Copia link</>}</button><div className="expiry-note"><Clock3 size={14}/> Link valido per 60 minuti. Può essere inoltrato da chi lo riceve.</div></div></div>}
     </main>
   );
