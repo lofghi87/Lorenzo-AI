@@ -25,3 +25,13 @@
 .incoming-share-status{display:flex;align-items:center;gap:10px;margin-top:18px;color:#d5bd91;font-size:12px}
 .share-expiry-copy{margin:17px 0 0;color:#9297a0;font-size:11px;line-height:1.7}
 @media(max-width:650px){.incoming-share-page{padding:22px}.incoming-share-card{padding:24px}}
+
+
+/* Recipient protection notice and visible watermark */
+.recipient-video-wrap{position:relative;width:100%;margin-top:18px}
+.recipient-video-wrap video{display:block;margin-top:0!important}
+.vault-watermark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-18deg);width:max-content;max-width:90%;padding:8px 13px;border:1px solid #ffffff55;border-radius:6px;background:#090a0c66;color:#ffffffb8;font-size:clamp(10px,2.2vw,15px);font-weight:800;letter-spacing:.16em;text-align:center;pointer-events:none;text-shadow:0 1px 4px #000;white-space:nowrap}
+.capture-warning{font-size:11px;margin-top:13px}
+.settings-modal .input-wrap{margin-top:8px}
+.settings-warning{margin-top:14px;line-height:1.65}
+.settings-modal form label{display:block;font-size:11px;color:#c2c4c9;margin:18px 0 8px}
