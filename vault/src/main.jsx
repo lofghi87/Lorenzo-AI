@@ -267,6 +267,18 @@ function App() {
     else setVideos([]);
   }, [session, vaultKey, loadVideos]);
 
+  useEffect(() => {
+    if (session?.user?.id) {
+      setAccountName(session.user.user_metadata?.display_name || '');
+      setAccountEmail(session.user.email || '');
+      loadSecurityData();
+    } else {
+      setShares([]);
+      setActivity([]);
+      setFolders(['Generale']);
+    }
+  }, [session?.user?.id]);
+
   async function handleAuth(event) {
     event.preventDefault();
     setError('');
@@ -287,8 +299,9 @@ function App() {
           setMessage('Account creato. Conferma l’email, poi accedi e inserisci la stessa frase segreta: non viene conservata durante la conferma.');
         }
       } else {
-        const { error: signError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { data: signInData, error: signError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (signError) throw signError;
+        if (signInData.user?.id) await logActivity(signInData.user.id, 'login', null, getDeviceLabel());
       }
     } catch (e) {
       setError(e.message || 'Non è stato possibile completare l’accesso.');
@@ -312,7 +325,7 @@ function App() {
     event.preventDefault();
     if (vaultPassphrase.length < 12) { setError('Usa una frase segreta di almeno 12 caratteri.'); return; }
     setUnlockBusy(true); setError('');
-    try { setVaultKey(await deriveVaultKey(vaultPassphrase, session.user.id)); setVaultPassphrase(''); }
+    try { setVaultKey(await deriveVaultKey(vaultPassphrase, session.user.id)); setVaultPassphrase(''); await logActivity(session.user.id, 'vault_unlocked', null, 'Cassaforte sbloccata da questo dispositivo'); }
     catch { setError('Non riesco a sbloccare la cassaforte.'); }
     finally { setUnlockBusy(false); }
   }
@@ -424,6 +437,12 @@ function App() {
         const encrypted = await encryptVideo(file, vaultKey);
         const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, encrypted, { cacheControl: '0', contentType: 'application/octet-stream', upsert: false });
         if (uploadError) throw uploadError;
+        const { error: metaError } = await supabase.from('vault_video_meta').upsert(
+          { user_id: session.user.id, storage_path: path, folder_name: 'Generale', updated_at: new Date().toISOString() },
+          { onConflict: 'user_id,storage_path' }
+        );
+        if (metaError) console.warn('Video caricato, ma cartella non salvata:', metaError.message);
+        await logActivity(session.user.id, 'video_uploaded', file.name, 'Video caricato e cifrato sul dispositivo');
       } catch (uploadError) {
         setError('Errore durante la cifratura o il caricamento di ' + file.name + ': ' + (uploadError.message || 'errore sconosciuto'));
         break;
@@ -443,6 +462,8 @@ function App() {
       if (result.error) throw new Error('Download non riuscito: ' + result.error.message);
       if (!result.data || typeof result.data.arrayBuffer !== 'function') throw new Error('Supabase non ha restituito un file valido.');
       const decrypted = await decryptVideo(result.data, vaultKey, item.mime);
+      createVideoPoster(decrypted).then(poster => { if (poster) setThumbnails(current => ({ ...current, [item.path]: poster })); }).catch(() => {});
+      await logActivity(session.user.id, 'video_opened', item.displayName || getDisplayName(item.name), 'Video aperto nella libreria privata');
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       const url = URL.createObjectURL(decrypted);
       setPreviewUrl(url);
@@ -478,6 +499,9 @@ function App() {
     const { error: moveError } = await supabase.storage.from(BUCKET).move(renameItem.path, newPath);
     setRenameBusy(false);
     if (moveError) { setError('Non sono riuscito a rinominare il video: ' + moveError.message); return; }
+    const { error: metaError } = await supabase.from('vault_video_meta').update({ storage_path: newPath, updated_at: new Date().toISOString() }).eq('user_id', session.user.id).eq('storage_path', renameItem.path);
+    if (metaError) setError('Video rinominato, ma cartella non aggiornata: ' + metaError.message);
+    await logActivity(session.user.id, 'video_renamed', clean, 'Video rinominato');
     setRenameItem(null); setRenameValue('');
     await loadVideos();
   }
@@ -501,12 +525,24 @@ function App() {
   }
 
   async function createTemporaryLink() {
-    if (!shareItem) return;
+    if (!shareItem || !session?.user?.id) return;
     setShareBusy(true);
     setError('');
+    let sharePath = '';
     try {
-      const { data, error: signError } = await supabase.storage.from(BUCKET).createSignedUrl(shareItem.path, SHARE_SECONDS, { download: false });
+      const shareId = crypto.randomUUID();
+      const safeName = (shareItem.displayName || getDisplayName(shareItem.name)).normalize('NFKD').replace(/[^a-zA-Z0-9._-]/g, '-').slice(-90) || 'video';
+      sharePath = session.user.id + '/_shares/' + shareId + '/' + safeName + (shareItem.encrypted ? '.vlt' : '');
+      const { error: copyError } = await supabase.storage.from(BUCKET).copy(shareItem.path, sharePath);
+      if (copyError) throw copyError;
+      const expiresAt = new Date(Date.now() + SHARE_SECONDS * 1000).toISOString();
+      const { data, error: signError } = await supabase.storage.from(BUCKET).createSignedUrl(sharePath, SHARE_SECONDS, { download: false });
       if (signError) throw signError;
+      const { error: recordError } = await supabase.from('vault_shares').insert({
+        user_id: session.user.id, original_path: shareItem.path, storage_path: sharePath,
+        file_name: shareItem.displayName || getDisplayName(shareItem.name), expires_at: expiresAt
+      });
+      if (recordError) throw recordError;
       let url = data.signedUrl;
       if (shareItem.encrypted) {
         if (!vaultKey) throw new Error('Sblocca nuovamente Vault per creare il link.');
@@ -520,7 +556,10 @@ function App() {
         url = window.location.origin + window.location.pathname + '#share=' + encodeURIComponent(JSON.stringify(payload));
       }
       setShareUrl(url);
+      await logActivity(session.user.id, 'share_created', shareItem.displayName || getDisplayName(shareItem.name), 'Creato link temporaneo con copia separata revocabile');
+      await loadSecurityData();
     } catch (e) {
+      if (sharePath) await supabase.storage.from(BUCKET).remove([sharePath]);
       setError('Non sono riuscito a creare il link: ' + (e.message || 'errore sconosciuto'));
     } finally {
       setShareBusy(false);
@@ -579,19 +618,140 @@ function App() {
   }
 
   async function deleteVideo(item) {
-    if (!window.confirm('Vuoi eliminare definitivamente questo video? I link di condivisione già creati per questo file smetteranno di funzionare dopo la propagazione della rimozione.')) return;
+    if (!window.confirm('Vuoi eliminare definitivamente questo video? Verranno rimossi anche i link temporanei ancora attivi associati al file.')) return;
+    const { data: linkedShares, error: sharesError } = await supabase.from('vault_shares').select('id,storage_path').eq('user_id', session.user.id).eq('original_path', item.path).is('revoked_at', null);
+    if (sharesError) { setError('Non riesco a verificare i link attivi: ' + sharesError.message); return; }
+    if (linkedShares?.length) {
+      const { error: shareDeleteError } = await supabase.storage.from(BUCKET).remove(linkedShares.map(row => row.storage_path));
+      if (shareDeleteError) { setError('Non riesco a revocare tutti i link collegati: ' + shareDeleteError.message); return; }
+      await supabase.from('vault_shares').update({ revoked_at: new Date().toISOString() }).in('id', linkedShares.map(row => row.id));
+    }
     const { error: deleteError } = await supabase.storage.from(BUCKET).remove([item.path]);
     if (deleteError) setError(deleteError.message);
     else {
+      await supabase.from('vault_video_meta').delete().eq('user_id', session.user.id).eq('storage_path', item.path);
+      await logActivity(session.user.id, 'video_deleted', item.displayName || getDisplayName(item.name), 'Video eliminato dalla libreria');
       setVideos(current => current.filter(v => v.id !== item.id));
       if (shareItem?.id === item.id) {
         setShareItem(null);
         setShareUrl('');
       }
+      await loadSecurityData();
     }
   }
 
-  const visibleVideos = useMemo(() => videos.filter(v => (v.displayName || v.name).toLowerCase().includes(search.toLowerCase())), [videos, search]);
+  async function logActivity(userId, eventType, itemName = null, details = null) {
+    if (!userId) return;
+    const { error: activityError } = await supabase.from('vault_activity').insert({ user_id: userId, event_type: eventType, item_name: itemName, details });
+    if (activityError) console.warn('Registro attività non aggiornato:', activityError.message);
+  }
+
+  async function loadSecurityData() {
+    if (!session?.user?.id) return;
+    setSecurityLoading(true);
+    const [shareResult, activityResult, folderResult] = await Promise.all([
+      supabase.from('vault_shares').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(50),
+      supabase.from('vault_activity').select('id,event_type,item_name,details,created_at').eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(40),
+      supabase.from('vault_video_folders').select('name').eq('user_id', session.user.id).order('name')
+    ]);
+    if (shareResult.error || activityResult.error || folderResult.error) {
+      setError('Non riesco a caricare il centro sicurezza: ' + (shareResult.error || activityResult.error || folderResult.error).message);
+    } else {
+      setShares(shareResult.data || []);
+      setActivity(activityResult.data || []);
+      setFolders(['Generale', ...new Set((folderResult.data || []).map(row => row.name).filter(name => name !== 'Generale'))]);
+    }
+    setSecurityLoading(false);
+  }
+
+  async function revokeShare(share) {
+    if (!window.confirm('Revocare questo link? Vault rimuoverà la copia temporanea condivisa. Chi ha già scaricato il video o ne ha conservato una copia non può essere disconnesso da remoto.')) return;
+    const { error: removeError } = await supabase.storage.from(BUCKET).remove([share.storage_path]);
+    if (removeError) { setError('Non riesco a rimuovere la copia condivisa: ' + removeError.message); return; }
+    const { error: updateError } = await supabase.from('vault_shares').update({ revoked_at: new Date().toISOString() }).eq('id', share.id).eq('user_id', session.user.id);
+    if (updateError) setError('Copia condivisa rimossa, ma registro non aggiornato: ' + updateError.message);
+    await logActivity(session.user.id, 'share_revoked', share.file_name, 'Link temporaneo revocato e copia condivisa rimossa');
+    await loadSecurityData();
+    setMessage('Link revocato: la copia temporanea è stata rimossa. Le copie già scaricate non possono essere richiamate.');
+  }
+
+  async function createFolder() {
+    const value = window.prompt('Nome della nuova cartella (massimo 40 caratteri):');
+    if (value === null) return;
+    const name = value.trim().replace(/[\/\\]/g, '-').slice(0, 40);
+    if (!name) { setError('Inserisci un nome di cartella valido.'); return; }
+    if (folders.some(folder => folder.toLowerCase() === name.toLowerCase())) { setError('Esiste già una cartella con questo nome.'); return; }
+    setFolderCreateBusy(true);
+    const { error: folderError } = await supabase.from('vault_video_folders').insert({ user_id: session.user.id, name });
+    setFolderCreateBusy(false);
+    if (folderError) { setError('Non riesco a creare la cartella: ' + folderError.message); return; }
+    setFolders(current => [...current, name].sort((a, b) => a.localeCompare(b, 'it')));
+    await logActivity(session.user.id, 'folder_created', name, 'Nuova cartella creata');
+    setActiveFolder(name);
+  }
+
+  async function moveToFolder(item, folderName) {
+    const { error: folderError } = await supabase.from('vault_video_meta').upsert({
+      user_id: session.user.id, storage_path: item.path, folder_name: folderName, updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id,storage_path' });
+    if (folderError) { setError('Non riesco a spostare il video: ' + folderError.message); return; }
+    setVideos(current => current.map(video => video.id === item.id ? { ...video, folder: folderName } : video));
+    await logActivity(session.user.id, 'video_moved', item.displayName || getDisplayName(item.name), 'Spostato nella cartella ' + folderName);
+  }
+
+  async function saveAccountName() {
+    const displayName = accountName.trim().slice(0, 60);
+    setAccountBusy(true);
+    const { error: updateError } = await supabase.auth.updateUser({ data: { ...(session.user.user_metadata || {}), display_name: displayName } });
+    setAccountBusy(false);
+    if (updateError) { setError('Non riesco a salvare il nome: ' + updateError.message); return; }
+    setMessage('Nome profilo aggiornato.');
+  }
+
+  async function requestAccountEmailChange() {
+    const nextEmail = accountEmail.trim().toLowerCase();
+    if (!nextEmail || nextEmail === (session.user.email || '').toLowerCase()) { setError('Inserisci un indirizzo email diverso da quello attuale.'); return; }
+    setAccountBusy(true);
+    const { error: updateError } = await supabase.auth.updateUser({ email: nextEmail });
+    setAccountBusy(false);
+    if (updateError) { setError('Non riesco a richiedere il cambio email: ' + updateError.message); return; }
+    await logActivity(session.user.id, 'email_change_requested', nextEmail, 'Richiesta di cambio email inviata');
+    setMessage('Richiesta inviata. Controlla la posta e conferma il cambio secondo le istruzioni ricevute.');
+  }
+
+  async function updateAccountPassword() {
+    if (newAccountPassword.length < 8) { setError('La nuova password deve contenere almeno 8 caratteri.'); return; }
+    setAccountBusy(true);
+    const { error: updateError } = await supabase.auth.updateUser({ password: newAccountPassword });
+    setAccountBusy(false);
+    if (updateError) { setError('Non riesco ad aggiornare la password: ' + updateError.message); return; }
+    setNewAccountPassword('');
+    await logActivity(session.user.id, 'password_changed', null, 'Password account aggiornata');
+    setMessage('Password aggiornata.');
+  }
+
+  async function signOutOtherSessions() {
+    if (!window.confirm('Disconnettere tutti gli altri dispositivi che usano questo account? Questa sessione resterà attiva.')) return;
+    const { error: signOutError } = await supabase.auth.signOut({ scope: 'others' });
+    if (signOutError) { setError('Non riesco a chiudere le altre sessioni: ' + signOutError.message); return; }
+    await logActivity(session.user.id, 'other_sessions_signed_out', null, 'Richiesta revoca delle altre sessioni');
+    setMessage('Richiesta completata: le altre sessioni sono state revocate. I token di accesso già emessi possono restare validi fino alla loro scadenza.');
+    await loadSecurityData();
+  }
+
+  const visibleVideos = useMemo(() => {
+    const filtered = videos.filter(video =>
+      (video.displayName || video.name).toLowerCase().includes(search.toLowerCase()) &&
+      (activeFolder === 'Tutte' || (video.folder || 'Generale') === activeFolder) &&
+      (encryptionFilter === 'all' || (encryptionFilter === 'encrypted' ? video.encrypted : !video.encrypted))
+    );
+    return filtered.sort((a, b) => {
+      if (sortMode === 'name') return (a.displayName || a.name).localeCompare(b.displayName || b.name, 'it');
+      if (sortMode === 'size') return (b.size || 0) - (a.size || 0);
+      const delta = new Date(a.created_at || 0) - new Date(b.created_at || 0);
+      return sortMode === 'oldest' ? delta : -delta;
+    });
+  }, [videos, search, activeFolder, encryptionFilter, sortMode]);
   const totalBytes = videos.reduce((sum, item) => sum + item.size, 0);
   const formatSize = bytes => bytes < 1024 * 1024 ? (bytes / 1024).toFixed(0) + ' KB' : (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   const formatDate = value => value ? new Date(value).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
