@@ -10,6 +10,13 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const BUCKET = 'vault-videos';
 const SHARE_SECONDS = 60 * 60;
 
+function getOriginalVideoMime(name) {
+  const match = name.replace(/\\.vlt$/i, '').match(/\\.([a-z0-9]+)$/i);
+  const ext = match ? match[1].toLowerCase() : '';
+  const types = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', avi: 'video/x-msvideo', mpeg: 'video/mpeg', mpg: 'video/mpeg', '3gp': 'video/3gpp' };
+  return types[ext] || 'video/mp4';
+}
+
 async function deriveVaultKey(passphrase, userId) {
   const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: new TextEncoder().encode('VAULT-v1:' + userId), iterations: 310000, hash: 'SHA-256' }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
@@ -79,7 +86,7 @@ function App() {
       return;
     }
     const entries = (data || []).filter(item => item.name && item.id);
-    const withUrls = entries.map(item => ({ ...item, path: session.user.id + '/' + item.name, encrypted: item.name.endsWith('.vlt'), size: item.metadata?.size || 0, mime: item.metadata?.mimetype || '' }));
+    const withUrls = entries.map(item => ({ ...item, path: session.user.id + '/' + item.name, encrypted: item.name.endsWith('.vlt'), size: item.metadata?.size || 0, mime: item.name.endsWith('.vlt') ? getOriginalVideoMime(item.name) : (item.metadata?.mimetype || '') }));
     setVideos(withUrls);
     setLoadingVideos(false);
   }, [session, vaultKey]);
