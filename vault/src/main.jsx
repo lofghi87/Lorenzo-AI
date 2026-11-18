@@ -183,8 +183,14 @@ function App() {
   const [shares, setShares] = useState([]);
   const [folderCreateBusy, setFolderCreateBusy] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted');
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const notifiedShareIds = useRef(new Set());
   const videoElementRef = useRef(null);
+
+  useEffect(() => {
+    const clock = window.setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => window.clearInterval(clock);
+  }, []);
 
   useEffect(() => {
     if (import.meta.env.PROD && 'serviceWorker' in navigator) {
@@ -808,7 +814,7 @@ function App() {
       return sortMode === 'oldest' ? delta : -delta;
     });
   }, [videos, search, activeFolder, encryptionFilter, sortMode]);
-  const securityAlerts = shares.filter(share => !share.revoked_at && new Date(share.expires_at).getTime() <= Date.now() + 15 * 60 * 1000);
+  const securityAlerts = shares.filter(share => !share.revoked_at && new Date(share.expires_at).getTime() <= nowTick + 15 * 60 * 1000);
   useEffect(() => {
     if (!notificationsEnabled || !('Notification' in window) || Notification.permission !== 'granted') return;
     securityAlerts.forEach(share => {
@@ -825,7 +831,7 @@ function App() {
         console.warn('Notifica Vault non disponibile:', error);
       }
     });
-  }, [notificationsEnabled, shares]);
+  }, [notificationsEnabled, shares, nowTick]);
   const totalBytes = videos.reduce((sum, item) => sum + item.size, 0);
   const formatSize = bytes => bytes < 1024 * 1024 ? (bytes / 1024).toFixed(0) + ' KB' : (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   const formatDate = value => value ? new Date(value).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
