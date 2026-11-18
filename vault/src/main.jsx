@@ -11,7 +11,7 @@ const BUCKET = 'vault-videos';
 const SHARE_SECONDS = 60 * 60;
 
 function getOriginalVideoMime(name) {
-  const match = name.replace(/\\.vlt$/i, '').match(/\\.([a-z0-9]+)$/i);
+  const match = name.replace(/\.vlt$/i, '').match(/\.([a-z0-9]+)$/i);
   const ext = match ? match[1].toLowerCase() : '';
   const types = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', avi: 'video/x-msvideo', mpeg: 'video/mpeg', mpg: 'video/mpeg', '3gp': 'video/3gpp' };
   return types[ext] || 'video/mp4';
