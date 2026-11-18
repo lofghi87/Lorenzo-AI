@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createClient } from '@supabase/supabase-js';
-import { LockKeyhole, ShieldCheck, UploadCloud, Film, Share2, Trash2, LogOut, Eye, EyeOff, Copy, Check, X, Play, Clock3, HardDrive, LoaderCircle, KeyRound, Mail, ArrowUpRight, AlertCircle, Pencil, Maximize2 } from 'lucide-react';
+import { LockKeyhole, ShieldCheck, UploadCloud, Film, Share2, Trash2, LogOut, Eye, EyeOff, Copy, Check, X, Play, Clock3, HardDrive, LoaderCircle, KeyRound, Mail, ArrowUpRight, AlertCircle, Pencil, Maximize2, Download } from 'lucide-react';
 import './styles.css';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -23,7 +23,7 @@ function getOriginalVideoMime(name) {
 
 async function deriveVaultKey(passphrase, userId) {
   const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: new TextEncoder().encode('VAULT-v1:' + userId), iterations: 310000, hash: 'SHA-256' }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: new TextEncoder().encode('VAULT-v1:' + userId), iterations: 310000, hash: 'SHA-256' }, material, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
 }
 
 async function encryptVideo(file, key) {
@@ -38,6 +38,30 @@ async function decryptVideo(blob, key, mime) {
   if (data.length < 32 || data[0] !== 86 || data[1] !== 76 || data[2] !== 84 || data[3] !== 49) throw new Error('Formato cifrato non riconosciuto.');
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: data.slice(4, 16) }, key, data.slice(16));
   return new Blob([plain], { type: mime || 'video/mp4' });
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
+}
+
+function parseIncomingShare() {
+  try {
+    const raw = new URLSearchParams(window.location.hash.slice(1)).get('share');
+    if (!raw) return null;
+    const payload = JSON.parse(raw);
+    const signedUrl = new URL(payload.url);
+    const storageOrigin = new URL(supabaseUrl).origin;
+    if (signedUrl.origin !== storageOrigin || !signedUrl.pathname.includes('/storage/v1/object/sign/' + BUCKET + '/')) return null;
+    if (!payload.key || !payload.name || !payload.mime || base64ToBytes(payload.key).length !== 32) return null;
+    return payload;
+  } catch { return null; }
 }
 
 function App() {
@@ -68,6 +92,13 @@ function App() {
   const [renameValue, setRenameValue] = useState('');
   const [renameBusy, setRenameBusy] = useState(false);
   const [openingVideoId, setOpeningVideoId] = useState(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [copyFile, setCopyFile] = useState(null);
+  const [incomingShare] = useState(() => parseIncomingShare());
+  const [incomingShareLoading, setIncomingShareLoading] = useState(false);
+  const [incomingShareVideoUrl, setIncomingShareVideoUrl] = useState('');
+  const [incomingShareFile, setIncomingShareFile] = useState(null);
+  const [incomingShareError, setIncomingShareError] = useState('');
   const videoElementRef = useRef(null);
 
   useEffect(() => {
@@ -80,6 +111,40 @@ function App() {
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!incomingShare) return;
+    let active = true;
+    let objectUrl = '';
+    (async () => {
+      setIncomingShareLoading(true);
+      setIncomingShareError('');
+      try {
+        const response = await fetch(incomingShare.url);
+        if (!response.ok) {
+          if ([400, 401, 403, 404].includes(response.status)) throw new Error('Questo link è scaduto o il video non è più disponibile.');
+          throw new Error('Non riesco a scaricare il video condiviso. Riprova tra poco.');
+        }
+        const encrypted = await response.blob();
+        const key = await crypto.subtle.importKey('raw', base64ToBytes(incomingShare.key), { name: 'AES-GCM' }, false, ['decrypt']);
+        const decrypted = await decryptVideo(encrypted, key, incomingShare.mime);
+        const file = new File([decrypted], incomingShare.name, { type: incomingShare.mime });
+        objectUrl = URL.createObjectURL(decrypted);
+        if (active) {
+          setIncomingShareFile(file);
+          setIncomingShareVideoUrl(objectUrl);
+        }
+      } catch (e) {
+        if (active) setIncomingShareError(e.message || 'Link non valido o video non disponibile.');
+      } finally {
+        if (active) setIncomingShareLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [incomingShare]);
 
   const loadVideos = useCallback(async () => {
     if (!session?.user?.id || !vaultKey) return;
@@ -252,19 +317,81 @@ function App() {
     } catch { setError('Schermo intero non disponibile in questo browser.'); }
   }
 
-  async function createShare(item) {
-    if (item.encrypted) { setError('La condivisione tramite link è disattivata per i video cifrati.'); return; }
+  function createShare(item) {
     setError('');
     setShareItem(item);
     setShareUrl('');
     setCopied(false);
-    const { data, error: signError } = await supabase.storage.from(BUCKET).createSignedUrl(item.path, SHARE_SECONDS, { download: false });
-    if (signError) {
-      setError(signError.message);
-      setShareItem(null);
+    setCopyFile(null);
+    setShareBusy(false);
+  }
+
+  async function createTemporaryLink() {
+    if (!shareItem) return;
+    setShareBusy(true);
+    setError('');
+    try {
+      const { data, error: signError } = await supabase.storage.from(BUCKET).createSignedUrl(shareItem.path, SHARE_SECONDS, { download: false });
+      if (signError) throw signError;
+      let url = data.signedUrl;
+      if (shareItem.encrypted) {
+        if (!vaultKey) throw new Error('Sblocca nuovamente Vault per creare il link.');
+        const rawKey = await crypto.subtle.exportKey('raw', vaultKey);
+        const payload = {
+          url,
+          key: bytesToBase64(new Uint8Array(rawKey)),
+          mime: shareItem.mime || 'video/mp4',
+          name: shareItem.displayName || getDisplayName(shareItem.name)
+        };
+        url = window.location.origin + window.location.pathname + '#share=' + encodeURIComponent(JSON.stringify(payload));
+      }
+      setShareUrl(url);
+    } catch (e) {
+      setError('Non sono riuscito a creare il link: ' + (e.message || 'errore sconosciuto'));
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  async function prepareCopy() {
+    if (!shareItem) return;
+    setShareBusy(true);
+    setError('');
+    try {
+      const { data, error: downloadError } = await supabase.storage.from(BUCKET).download(shareItem.path);
+      if (downloadError) throw downloadError;
+      const content = shareItem.encrypted ? await decryptVideo(data, vaultKey, shareItem.mime) : data;
+      const filename = shareItem.displayName || getDisplayName(shareItem.name);
+      setCopyFile(new File([content], filename, { type: shareItem.mime || content.type || 'video/mp4' }));
+    } catch (e) {
+      setError('Non sono riuscito a preparare la copia: ' + (e.message || 'errore sconosciuto'));
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  async function shareFileToDevice(file) {
+    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+      await navigator.share({ files: [file], title: file.name });
       return;
     }
-    setShareUrl(data.signedUrl);
+    const url = URL.createObjectURL(file);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = file.name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  async function sendPreparedCopy() {
+    if (!copyFile) return;
+    try {
+      await shareFileToDevice(copyFile);
+    } catch (e) {
+      if (e.name !== 'AbortError') setError('Non è stato possibile condividere la copia: ' + (e.message || 'errore sconosciuto'));
+    }
   }
 
   async function copyShare() {
@@ -294,6 +421,24 @@ function App() {
   const totalBytes = videos.reduce((sum, item) => sum + item.size, 0);
   const formatSize = bytes => bytes < 1024 * 1024 ? (bytes / 1024).toFixed(0) + ' KB' : (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   const formatDate = value => value ? new Date(value).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+  if (incomingShare) return (
+    <main className="auth-page incoming-share-page">
+      <div className="auth-top"><div className="brand"><div className="brand-icon"><LockKeyhole size={19}/></div><span>VAULT</span></div><span className="top-note"><Clock3 size={14}/> LINK TEMPORANEO</span></div>
+      <section className="auth-layout" style={{ display: 'flex', justifyContent: 'center' }}>
+        <div className="auth-card incoming-share-card">
+          <div className="card-lock"><ShieldCheck size={22}/></div>
+          <div className="section-kicker">VIDEO CONDIVISO IN MODO SICURO</div>
+          <h2>{incomingShare.name}</h2>
+          {incomingShareLoading && <div className="incoming-share-status"><LoaderCircle className="spin" size={20}/> Sto preparando il video…</div>}
+          {incomingShareError && <div className="notice error"><AlertCircle size={16}/>{incomingShareError}</div>}
+          {incomingShareVideoUrl && <video src={incomingShareVideoUrl} controls playsInline style={{ width: '100%', maxHeight: '55vh', marginTop: 18, background: '#000', borderRadius: 10 }} />}
+          {incomingShareFile && <button className="primary-btn copy-btn" onClick={() => shareFileToDevice(incomingShareFile)}><Share2 size={17}/> Salva o invia una copia</button>}
+          <p className="share-expiry-copy">Il link scade dopo 60 minuti. Se salvi una copia sul dispositivo, il file resterà disponibile anche dopo la scadenza.</p>
+        </div>
+      </section>
+    </main>
+  );
 
   if (!authReady) return <div className="boot"><div className="vault-mark"><LockKeyhole size={25}/></div><LoaderCircle className="spin" size={20}/></div>;
 
@@ -360,7 +505,7 @@ function App() {
           <div className="video-grid">{visibleVideos.map(item => (
             <article className="video-card" key={item.id}>
               <button className="video-preview encrypted-preview" disabled={openingVideoId !== null} onClick={() => item.encrypted ? openEncryptedVideo(item) : setError('Questo è un vecchio video non cifrato. Scaricalo e ricaricalo dopo la modifica per proteggerlo.') }><div className="video-placeholder">{openingVideoId === item.id ? <><LoaderCircle className="spin" size={32}/><span>APERTURA IN CORSO…</span></> : <><LockKeyhole size={32}/><span>{item.encrypted ? 'CIFRATO' : 'NON CIFRATO'}</span></>}</div><span className="private-tag"><LockKeyhole size={11}/> {item.encrypted ? 'AES-256' : 'VECCHIO FILE'}</span></button>
-              <div className="video-info"><h3 title={item.displayName}>{item.displayName}</h3><div className="video-meta"><span><Clock3 size={13}/>{formatDate(item.created_at)}</span><span>{formatSize(item.size)}</span></div><div className="video-actions"><button className="share-btn" disabled={openingVideoId !== null} onClick={() => item.encrypted ? openEncryptedVideo(item) : setError('Questo vecchio video non è cifrato.')}>{openingVideoId === item.id ? 'Apertura…' : item.encrypted ? 'Apri video' : 'Da proteggere'}</button>{item.encrypted && <button className="delete-btn" onClick={() => beginRename(item)} title="Modifica nome"><Pencil size={16}/></button>}<button className="delete-btn" onClick={() => deleteVideo(item)} title="Elimina video"><Trash2 size={16}/></button></div></div>
+              <div className="video-info"><h3 title={item.displayName}>{item.displayName}</h3><div className="video-meta"><span><Clock3 size={13}/>{formatDate(item.created_at)}</span><span>{formatSize(item.size)}</span></div><div className="video-actions"><button className="share-btn" disabled={openingVideoId !== null} onClick={() => createShare(item)}><Share2 size={14}/> Condividi</button>{item.encrypted && <button className="delete-btn" onClick={() => beginRename(item)} title="Modifica nome"><Pencil size={16}/></button>}<button className="delete-btn" onClick={() => deleteVideo(item)} title="Elimina video"><Trash2 size={16}/></button></div></div>
             </article>
           ))}</div>
         )}
@@ -368,7 +513,7 @@ function App() {
       <footer className="dash-footer"><span><ShieldCheck size={14}/> I nuovi caricamenti sono cifrati prima di arrivare a Supabase.</span><span>VAULT · CLIENT-SIDE ENCRYPTION</span></footer>
       {previewUrl && <div className="modal-backdrop" onClick={() => {URL.revokeObjectURL(previewUrl);setPreviewUrl('');setPreviewName('');}}><div className="share-modal video-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => {URL.revokeObjectURL(previewUrl);setPreviewUrl('');setPreviewName('');}}><X size={18}/></button><div className="section-kicker">DECIFRATO SOLO IN MEMORIA</div><h2>{previewName}</h2><div className="video-player-wrap"><video ref={videoElementRef} src={previewUrl} controls autoPlay playsInline style={{width:'100%',maxHeight:'60vh',marginTop:16,background:'#000'}}/><button className="fullscreen-btn" onClick={requestVideoFullscreen}><Maximize2 size={17}/> Schermo intero</button></div></div></div>}
       {renameItem && <div className="modal-backdrop" onClick={() => !renameBusy && setRenameItem(null)}><div className="share-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => !renameBusy && setRenameItem(null)}><X size={18}/></button><div className="modal-icon"><Pencil size={21}/></div><div className="section-kicker">MODIFICA VIDEO</div><h2>Rinomina video</h2><p>Modifica il nome con cui compare nella tua libreria. Il contenuto cifrato non viene modificato.</p><form onSubmit={saveRename}><input className="rename-input" value={renameValue} onChange={e => setRenameValue(e.target.value)} maxLength={100} autoFocus placeholder="Nome del video"/><button className="primary-btn copy-btn" disabled={renameBusy}>{renameBusy ? <LoaderCircle className="spin" size={17}/> : <Check size={17}/>} Salva nome</button></form></div></div>}
-      {shareItem && <div className="modal-backdrop" onClick={() => {setShareItem(null);setShareUrl('');}}><div className="share-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => {setShareItem(null);setShareUrl('');}}><X size={18}/></button><div className="modal-icon"><Share2 size={21}/></div><div className="section-kicker">CONDIVISIONE SICURA</div><h2>Condividi questo video</h2><p>Chi riceve il link potrà vedere il video senza accedere al tuo account. Il link scade automaticamente dopo un'ora.</p><div className="share-file"><Film size={17}/><span>{shareItem.name.replace(/^[0-9a-f-]{30,}-/i,'')}</span></div><div className="share-link">{shareUrl || 'Creo il link sicuro…'}</div><button className="primary-btn copy-btn" disabled={!shareUrl} onClick={copyShare}>{copied ? <><Check size={17}/> Link copiato</> : <><Copy size={17}/> Copia link</>}</button><div className="expiry-note"><Clock3 size={14}/> Link valido per 60 minuti. Può essere inoltrato da chi lo riceve.</div></div></div>}
+      {shareItem && <div className="modal-backdrop" onClick={() => {setShareItem(null);setShareUrl('');setCopyFile(null);}}><div className="share-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => {setShareItem(null);setShareUrl('');setCopyFile(null);}}><X size={18}/></button><div className="modal-icon"><Share2 size={21}/></div><div className="section-kicker">CONDIVISIONE SICURA</div><h2>Condividi questo video</h2><p>Scegli se inviare un link temporaneo oppure una copia del file, che resterà sul dispositivo di chi la riceve.</p><div className="share-file"><Film size={17}/><span>{shareItem.displayName || getDisplayName(shareItem.name)}</span></div><button className="secondary-share-btn" disabled={shareBusy} onClick={createTemporaryLink}>{shareBusy && !copyFile ? <LoaderCircle className="spin" size={16}/> : <Clock3 size={16}/>} Crea link valido 1 ora</button>{shareUrl && <><div className="share-link">{shareUrl}</div><button className="primary-btn copy-btn" onClick={copyShare}>{copied ? <><Check size={17}/> Link copiato</> : <><Copy size={17}/> Copia link</>}</button></>}<div className="share-divider">OPPURE</div><button className="primary-btn copy-btn" disabled={shareBusy} onClick={copyFile ? sendPreparedCopy : prepareCopy}>{shareBusy ? <><LoaderCircle className="spin" size={17}/> Preparo la copia…</> : copyFile ? <><Share2 size={17}/> Invia la copia</> : <><Download size={17}/> Prepara una copia da inviare</>}</button><div className="expiry-note"><ShieldCheck size={14}/> La copia inviata non dipende da Vault e non scade. Il link invece dura 60 minuti.</div></div></div>}
     </main>
   );
 }
