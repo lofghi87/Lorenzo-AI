@@ -11,3 +11,17 @@
 .rename-input:focus{border-color:#a68a5b}
 .video-actions .delete-btn{display:grid;place-items:center;min-width:34px;height:34px;border:1px solid #33373d;border-radius:8px;background:#17191d;color:#aeb2ba}
 .video-actions .delete-btn:hover{border-color:#66543a;color:#e0c58f}
+
+
+/* Secure sharing and recipient download */
+.secondary-share-btn{width:100%;min-height:44px;margin-top:15px;padding:10px 14px;display:flex;align-items:center;justify-content:center;gap:9px;border:1px solid #665238;border-radius:9px;background:#211b12;color:#e5c995;font-size:12px;font-weight:700}
+.secondary-share-btn:hover{background:#302515}
+.secondary-share-btn:disabled{opacity:.55;cursor:not-allowed}
+.share-divider{display:flex;align-items:center;gap:12px;margin:18px 0 0;color:#737983;font-size:9px;letter-spacing:.2em}
+.share-divider:before,.share-divider:after{content:'';height:1px;flex:1;background:#30343a}
+.incoming-share-page .auth-layout{padding:55px 0}
+.incoming-share-card{width:min(100%,620px)}
+.incoming-share-card h2{overflow-wrap:anywhere}
+.incoming-share-status{display:flex;align-items:center;gap:10px;margin-top:18px;color:#d5bd91;font-size:12px}
+.share-expiry-copy{margin:17px 0 0;color:#9297a0;font-size:11px;line-height:1.7}
+@media(max-width:650px){.incoming-share-page{padding:22px}.incoming-share-card{padding:24px}}
