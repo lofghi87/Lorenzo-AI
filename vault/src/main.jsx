@@ -344,13 +344,22 @@ function App() {
     if (newVaultPassphrase.length < 12) { setError('La nuova frase deve contenere almeno 12 caratteri.'); return; }
     if (newVaultPassphrase !== newVaultPassphraseConfirm) { setError('Le due nuove frasi non coincidono.'); return; }
     if (newVaultPassphrase === vaultPassphrase) { setError('Scegli una frase diversa da quella attuale.'); return; }
-    if (!window.confirm('Vault creerà copie cifrate con la nuova frase, verificherà ogni file e solo dopo eliminerà gli originali. Tieni aperta questa pagina fino al termine. Vuoi continuare?')) return;
+    if (!window.confirm('Vault creerà copie cifrate con la nuova frase, verificherà tutti i file e solo dopo eliminerà gli originali. Per sicurezza, i link temporanei attivi verranno revocati. Tieni aperta la pagina fino al termine. Vuoi continuare?')) return;
 
     setRotationBusy(true);
     setRotationProgress('Preparazione della nuova chiave…');
     setError('');
     const stagedPaths = [];
     try {
+      setRotationProgress('Revoca dei link temporanei…');
+      const { data: activeShares, error: activeSharesError } = await supabase.from('vault_shares').select('id,storage_path').eq('user_id', session.user.id).is('revoked_at', null);
+      if (activeSharesError) throw new Error('Non riesco a controllare i link temporanei: ' + activeSharesError.message);
+      if (activeShares?.length) {
+        const { error: removeSharesError } = await supabase.storage.from(BUCKET).remove(activeShares.map(share => share.storage_path));
+        if (removeSharesError) throw new Error('Non riesco a revocare i link temporanei: ' + removeSharesError.message);
+        const { error: markSharesError } = await supabase.from('vault_shares').update({ revoked_at: new Date().toISOString() }).in('id', activeShares.map(share => share.id));
+        if (markSharesError) console.warn('Copie dei link rimosse, ma alcuni record non sono stati aggiornati:', markSharesError.message);
+      }
       const newKey = await deriveVaultKey(newVaultPassphrase, session.user.id);
       const allItems = [];
       const pageSize = 100;
@@ -367,6 +376,8 @@ function App() {
       if (!allItems.length) {
         setVaultKey(newKey);
         setSettingsOpen(false);
+        await logActivity(session.user.id, 'vault_passphrase_changed', null, 'Frase segreta aggiornata: link temporanei revocati');
+        await loadSecurityData();
         setMessage('Frase segreta aggiornata. La cassaforte era vuota.');
       } else {
         const oldPaths = [];
@@ -400,6 +411,8 @@ function App() {
         if (removeError) throw new Error('Le nuove copie sono pronte, ma non sono riuscito a completare la sostituzione degli originali: ' + removeError.message);
         setVaultKey(newKey);
         setSettingsOpen(false);
+        await logActivity(session.user.id, 'vault_passphrase_changed', null, 'Frase segreta aggiornata: video ricifrati e link temporanei revocati');
+        await loadSecurityData();
         setMessage('Frase segreta aggiornata. Tutti i video sono stati ricifrati e verificati.');
       }
       setNewVaultPassphrase('');
@@ -509,6 +522,8 @@ function App() {
     if (moveError) { setError('Non sono riuscito a rinominare il video: ' + moveError.message); return; }
     const { error: metaError } = await supabase.from('vault_video_meta').update({ storage_path: newPath, updated_at: new Date().toISOString() }).eq('user_id', session.user.id).eq('storage_path', renameItem.path);
     if (metaError) setError('Video rinominato, ma cartella non aggiornata: ' + metaError.message);
+    const { error: sharesMoveError } = await supabase.from('vault_shares').update({ original_path: newPath, file_name: clean + extension }).eq('user_id', session.user.id).eq('original_path', renameItem.path).is('revoked_at', null);
+    if (sharesMoveError) setError('Video rinominato, ma non ho aggiornato il collegamento dei link già creati: ' + sharesMoveError.message);
     await logActivity(session.user.id, 'video_renamed', clean, 'Video rinominato');
     setRenameItem(null); setRenameValue('');
     await loadVideos();
