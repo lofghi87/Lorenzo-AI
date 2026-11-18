@@ -185,6 +185,14 @@ function App() {
   const videoElementRef = useRef(null);
 
   useEffect(() => {
+    if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/vault-sw.js', { scope: '/' }).catch(error => {
+        console.warn('Service worker Vault non disponibile:', error);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setAuthReady(true);
@@ -412,7 +420,7 @@ function App() {
     setVaultKey(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(''); setPreviewName('');
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     setShareItem(null);
     setShareUrl('');
   }
