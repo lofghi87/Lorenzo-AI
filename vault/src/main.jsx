@@ -520,9 +520,8 @@ function App() {
           {incomingShareLoading && <div className="incoming-share-status"><LoaderCircle className="spin" size={20}/> Sto preparando il video…</div>}
           {incomingShareError && <div className="notice error"><AlertCircle size={16}/>{incomingShareError}</div>}
           {incomingShareVideoUrl && <div className="recipient-video-wrap"><video src={incomingShareVideoUrl} controls playsInline style={{ width: '100%', maxHeight: '55vh', marginTop: 18, background: '#000', borderRadius: 10 }} /><div className="vault-watermark">VAULT · CONTENUTO RISERVATO</div></div>}
-          {incomingShareVideoUrl && <div className="notice error capture-warning"><ShieldCheck size={16}/> Non registrare né acquisire questo contenuto. Le acquisizioni non possono essere bloccate o rese nere da un sito web.</div>}
-          {incomingShareFile && <button className="primary-btn copy-btn" onClick={() => shareFileToDevice(incomingShareFile)}><Share2 size={17}/> Salva o invia una copia</button>}
-          <p className="share-expiry-copy">Il link scade dopo 60 minuti. Se salvi una copia sul dispositivo, il file resterà disponibile anche dopo la scadenza.</p>
+          {incomingShareVideoUrl && <div className="notice error capture-warning"><ShieldCheck size={16}/> Contenuto riservato: non registrare, acquisire o redistribuire questo video. Il link è temporaneo e la condivisione è destinata esclusivamente al destinatario.</div>}
+          <p className="share-expiry-copy">Questo link temporaneo scade dopo 60 minuti.</p>
         </div>
       </section>
     </main>
