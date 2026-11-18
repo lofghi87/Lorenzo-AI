@@ -85,6 +85,15 @@ function App() {
   const [vaultKey, setVaultKey] = useState(null);
   const [vaultPassphrase, setVaultPassphrase] = useState('');
   const [vaultPassphraseConfirm, setVaultPassphraseConfirm] = useState('');
+  const [showVaultPassphrase, setShowVaultPassphrase] = useState(false);
+  const [showVaultPassphraseConfirm, setShowVaultPassphraseConfirm] = useState(false);
+  const [showNewVaultPassphrase, setShowNewVaultPassphrase] = useState(false);
+  const [showNewVaultPassphraseConfirm, setShowNewVaultPassphraseConfirm] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [newVaultPassphrase, setNewVaultPassphrase] = useState('');
+  const [newVaultPassphraseConfirm, setNewVaultPassphraseConfirm] = useState('');
+  const [rotationBusy, setRotationBusy] = useState(false);
+  const [rotationProgress, setRotationProgress] = useState('');
   const [unlockBusy, setUnlockBusy] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewName, setPreviewName] = useState('');
@@ -219,6 +228,84 @@ function App() {
     try { setVaultKey(await deriveVaultKey(vaultPassphrase, session.user.id)); setVaultPassphrase(''); }
     catch { setError('Non riesco a sbloccare la cassaforte.'); }
     finally { setUnlockBusy(false); }
+  }
+
+  async function changeVaultPassphrase(event) {
+    event.preventDefault();
+    if (!vaultKey || !session?.user?.id) return;
+    if (newVaultPassphrase.length < 12) { setError('La nuova frase deve contenere almeno 12 caratteri.'); return; }
+    if (newVaultPassphrase !== newVaultPassphraseConfirm) { setError('Le due nuove frasi non coincidono.'); return; }
+    if (newVaultPassphrase === vaultPassphrase) { setError('Scegli una frase diversa da quella attuale.'); return; }
+    if (!window.confirm('Vault creerà copie cifrate con la nuova frase, verificherà ogni file e solo dopo eliminerà gli originali. Tieni aperta questa pagina fino al termine. Vuoi continuare?')) return;
+
+    setRotationBusy(true);
+    setRotationProgress('Preparazione della nuova chiave…');
+    setError('');
+    const stagedPaths = [];
+    try {
+      const newKey = await deriveVaultKey(newVaultPassphrase, session.user.id);
+      const allItems = [];
+      const pageSize = 100;
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error: listError } = await supabase.storage.from(BUCKET).list(session.user.id, {
+          limit: pageSize, offset, sortBy: { column: 'created_at', order: 'asc' }
+        });
+        if (listError) throw listError;
+        const page = (data || []).filter(item => item.name && item.id);
+        allItems.push(...page);
+        if (page.length < pageSize) break;
+      }
+
+      if (!allItems.length) {
+        setVaultKey(newKey);
+        setSettingsOpen(false);
+        setMessage('Frase segreta aggiornata. La cassaforte era vuota.');
+      } else {
+        const oldPaths = [];
+        for (let index = 0; index < allItems.length; index++) {
+          const item = allItems[index];
+          const oldPath = session.user.id + '/' + item.name;
+          const displayName = getDisplayName(item.name);
+          const mime = item.name.endsWith('.vlt') ? getOriginalVideoMime(item.name) : (item.metadata?.mimetype || 'video/mp4');
+          setRotationProgress('Cifratura e verifica ' + (index + 1) + ' di ' + allItems.length + ': ' + displayName);
+          const { data, error: downloadError } = await supabase.storage.from(BUCKET).download(oldPath);
+          if (downloadError || !data) throw new Error('Download non riuscito per "' + displayName + '": ' + (downloadError?.message || 'file non disponibile'));
+          const plain = item.name.endsWith('.vlt') ? await decryptVideo(data, vaultKey, mime) : data;
+          const encrypted = await encryptVideo(plain, newKey);
+          // Verifica locale dell'integrità prima di caricare la nuova copia.
+          await decryptVideo(encrypted, newKey, mime);
+          const safeName = displayName.normalize('NFKD').replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-').slice(-100) || 'video';
+          const newPath = session.user.id + '/' + crypto.randomUUID() + '-' + safeName + '.vlt';
+          const { error: uploadError } = await supabase.storage.from(BUCKET).upload(newPath, encrypted, {
+            cacheControl: '0', contentType: 'application/octet-stream', upsert: false
+          });
+          if (uploadError) throw new Error('Caricamento della nuova copia non riuscito per "' + displayName + '": ' + uploadError.message);
+          stagedPaths.push(newPath);
+          // Verifica anche la copia effettivamente salvata sul server.
+          const { data: savedCopy, error: verifyError } = await supabase.storage.from(BUCKET).download(newPath);
+          if (verifyError || !savedCopy) throw new Error('Verifica della nuova copia non riuscita per "' + displayName + '".');
+          await decryptVideo(savedCopy, newKey, mime);
+          oldPaths.push(oldPath);
+        }
+        setRotationProgress('Tutti i video sono verificati. Sostituzione degli originali…');
+        const { error: removeError } = await supabase.storage.from(BUCKET).remove(oldPaths);
+        if (removeError) throw new Error('Le nuove copie sono pronte, ma non sono riuscito a completare la sostituzione degli originali: ' + removeError.message);
+        setVaultKey(newKey);
+        setSettingsOpen(false);
+        setMessage('Frase segreta aggiornata. Tutti i video sono stati ricifrati e verificati.');
+      }
+      setNewVaultPassphrase('');
+      setNewVaultPassphraseConfirm('');
+      setVaultPassphrase('');
+    } catch (e) {
+      if (stagedPaths.length) {
+        await supabase.storage.from(BUCKET).remove(stagedPaths);
+      }
+      setError('Modifica della frase non completata: ' + (e.message || 'errore sconosciuto') + ' I video originali sono stati mantenuti.');
+    } finally {
+      setRotationBusy(false);
+      setRotationProgress('');
+    }
   }
 
   async function handleLogout() {
@@ -432,7 +519,8 @@ function App() {
           <h2>{incomingShare.name}</h2>
           {incomingShareLoading && <div className="incoming-share-status"><LoaderCircle className="spin" size={20}/> Sto preparando il video…</div>}
           {incomingShareError && <div className="notice error"><AlertCircle size={16}/>{incomingShareError}</div>}
-          {incomingShareVideoUrl && <video src={incomingShareVideoUrl} controls playsInline style={{ width: '100%', maxHeight: '55vh', marginTop: 18, background: '#000', borderRadius: 10 }} />}
+          {incomingShareVideoUrl && <div className="recipient-video-wrap"><video src={incomingShareVideoUrl} controls playsInline style={{ width: '100%', maxHeight: '55vh', marginTop: 18, background: '#000', borderRadius: 10 }} /><div className="vault-watermark">VAULT · CONTENUTO RISERVATO</div></div>}
+          {incomingShareVideoUrl && <div className="notice error capture-warning"><ShieldCheck size={16}/> Non registrare né acquisire questo contenuto. Le acquisizioni non possono essere bloccate o rese nere da un sito web.</div>}
           {incomingShareFile && <button className="primary-btn copy-btn" onClick={() => shareFileToDevice(incomingShareFile)}><Share2 size={17}/> Salva o invia una copia</button>}
           <p className="share-expiry-copy">Il link scade dopo 60 minuti. Se salvi una copia sul dispositivo, il file resterà disponibile anche dopo la scadenza.</p>
         </div>
@@ -462,7 +550,7 @@ function App() {
             <div className="input-wrap"><Mail size={17}/><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="nome@email.com" autoComplete="email" required /></div>
             <label>Password</label>
             <div className="input-wrap"><KeyRound size={17}/><input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Almeno 8 caratteri" minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required/><button className="eye-btn" type="button" onClick={() => setShowPassword(v => !v)} aria-label="Mostra password">{showPassword ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div>
-            {mode === 'signup' && <><label>Frase segreta di cifratura</label><div className="input-wrap"><KeyRound size={17}/><input type="password" value={vaultPassphrase} onChange={e => setVaultPassphrase(e.target.value)} placeholder="Almeno 12 caratteri" minLength={12} autoComplete="new-password" required/></div><label>Conferma frase segreta</label><div className="input-wrap"><KeyRound size={17}/><input type="password" value={vaultPassphraseConfirm} onChange={e => setVaultPassphraseConfirm(e.target.value)} placeholder="Ripeti la frase segreta" minLength={12} autoComplete="new-password" required/></div><p className="card-sub">Questa frase cifra i video. È diversa dalla password dell’account e non può essere recuperata se la dimentichi.</p></>}
+            {mode === 'signup' && <><label>Frase segreta di cifratura</label><div className="input-wrap"><KeyRound size={17}/><input type={showVaultPassphrase ? 'text' : 'password'} value={vaultPassphrase} onChange={e => setVaultPassphrase(e.target.value)} placeholder="Almeno 12 caratteri" minLength={12} autoComplete="new-password" required/><button className="eye-btn" type="button" onClick={() => setShowVaultPassphrase(v => !v)} aria-label="Mostra frase segreta">{showVaultPassphrase ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div><label>Conferma frase segreta</label><div className="input-wrap"><KeyRound size={17}/><input type={showVaultPassphraseConfirm ? 'text' : 'password'} value={vaultPassphraseConfirm} onChange={e => setVaultPassphraseConfirm(e.target.value)} placeholder="Ripeti la frase segreta" minLength={12} autoComplete="new-password" required/><button className="eye-btn" type="button" onClick={() => setShowVaultPassphraseConfirm(v => !v)} aria-label="Mostra conferma frase">{showVaultPassphraseConfirm ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div><p className="card-sub">Questa frase cifra i video. È diversa dalla password dell’account e non può essere recuperata se la dimentichi.</p></>}
             <button className="primary-btn auth-submit" disabled={authBusy}>{authBusy ? <LoaderCircle className="spin" size={18}/> : <>{mode === 'login' ? 'Entra nella cassaforte' : 'Crea account'} <ArrowUpRight size={17}/></>}</button>
           </form>
           {mode === 'login' && <button className="text-btn forgot" onClick={handleReset}>Hai dimenticato la password?</button>}
@@ -477,14 +565,14 @@ function App() {
   );
 
   if (!vaultKey) return (
-    <main className="auth-page"><div className="auth-glow"/><div className="auth-top"><div className="brand"><div className="brand-icon"><LockKeyhole size={19}/></div><span>VAULT</span></div><button className="text-btn" onClick={handleLogout}>Esci</button></div><section className="auth-layout" style={{display:'flex',justifyContent:'center'}}><div className="auth-card" style={{width:'min(100%,440px)'}}><div className="card-lock"><KeyRound size={22}/></div><h2>Sblocca la cifratura</h2><p className="card-sub">Inserisci la tua frase segreta Vault. Non viene inviata né salvata sui server. Usa la stessa frase su ogni dispositivo.</p><form onSubmit={unlockVault}><label>Frase segreta (almeno 12 caratteri)</label><div className="input-wrap"><KeyRound size={17}/><input type="password" value={vaultPassphrase} onChange={e => setVaultPassphrase(e.target.value)} autoComplete="off" minLength={12} required placeholder="La tua frase segreta"/></div><button className="primary-btn auth-submit" disabled={unlockBusy}>{unlockBusy ? <LoaderCircle className="spin" size={18}/> : 'Sblocca Vault'}</button></form>{error && <div className="notice error"><AlertCircle size={16}/>{error}</div>}<div className="auth-foot"><ShieldCheck size={13}/> Se dimentichi la frase segreta, i video cifrati non si possono recuperare.</div></div></section></main>
+    <main className="auth-page"><div className="auth-glow"/><div className="auth-top"><div className="brand"><div className="brand-icon"><LockKeyhole size={19}/></div><span>VAULT</span></div><button className="text-btn" onClick={handleLogout}>Esci</button></div><section className="auth-layout" style={{display:'flex',justifyContent:'center'}}><div className="auth-card" style={{width:'min(100%,440px)'}}><div className="card-lock"><KeyRound size={22}/></div><h2>Sblocca la cifratura</h2><p className="card-sub">Inserisci la tua frase segreta Vault. Non viene inviata né salvata sui server. Usa la stessa frase su ogni dispositivo.</p><form onSubmit={unlockVault}><label>Frase segreta (almeno 12 caratteri)</label><div className="input-wrap"><KeyRound size={17}/><input type={showVaultPassphrase ? 'text' : 'password'} value={vaultPassphrase} onChange={e => setVaultPassphrase(e.target.value)} autoComplete="off" minLength={12} required placeholder="La tua frase segreta"/><button className="eye-btn" type="button" onClick={() => setShowVaultPassphrase(v => !v)} aria-label="Mostra frase segreta">{showVaultPassphrase ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div><button className="primary-btn auth-submit" disabled={unlockBusy}>{unlockBusy ? <LoaderCircle className="spin" size={18}/> : 'Sblocca Vault'}</button></form>{error && <div className="notice error"><AlertCircle size={16}/>{error}</div>}<div className="auth-foot"><ShieldCheck size={13}/> Se dimentichi la frase segreta, i video cifrati non si possono recuperare.</div></div></section></main>
   );
 
   return (
     <main className="dashboard">
       <header className="dash-header">
         <div className="brand"><div className="brand-icon"><LockKeyhole size={19}/></div><span>VAULT</span></div>
-        <div className="header-right"><span className="secure-pill"><span className="pulse-dot"/> ARCHIVIO PROTETTO</span><div className="user-chip">{session.user.email?.slice(0,1).toUpperCase()}</div><button className="icon-btn" onClick={handleLogout} title="Esci"><LogOut size={18}/></button></div>
+        <div className="header-right"><span className="secure-pill"><span className="pulse-dot"/> ARCHIVIO PROTETTO</span><div className="user-chip">{session.user.email?.slice(0,1).toUpperCase()}</div><button className="icon-btn" onClick={() => {setSettingsOpen(true);setError('');setMessage('');}} title="Impostazioni"><KeyRound size={18}/></button><button className="icon-btn" onClick={handleLogout} title="Esci"><LogOut size={18}/></button></div>
       </header>
       <section className="welcome">
         <div><div className="eyebrow"><span className="pulse-dot"/> IL TUO SPAZIO PERSONALE</div><h1>La tua <span>cassaforte.</span></h1><p>I nuovi video vengono cifrati sul dispositivo prima del caricamento.</p></div>
@@ -511,6 +599,8 @@ function App() {
         )}
       </section>
       <footer className="dash-footer"><span><ShieldCheck size={14}/> I nuovi caricamenti sono cifrati prima di arrivare a Supabase.</span><span>VAULT · CLIENT-SIDE ENCRYPTION</span></footer>
+      {message && <div className="notice success dashboard-notice"><Check size={16}/>{message}<button onClick={() => setMessage('')}><X size={15}/></button></div>}
+      {settingsOpen && <div className="modal-backdrop" onClick={() => !rotationBusy && setSettingsOpen(false)}><div className="share-modal settings-modal" onClick={e => e.stopPropagation()}><button className="modal-close" disabled={rotationBusy} onClick={() => setSettingsOpen(false)}><X size={18}/></button><div className="modal-icon"><KeyRound size={21}/></div><div className="section-kicker">IMPOSTAZIONI DI SICUREZZA</div><h2>Modifica frase segreta</h2><p>Vault ricifrerà tutti i video con la nuova frase. Le frasi vengono elaborate solo sul dispositivo e non vengono inviate ai server.</p><form onSubmit={changeVaultPassphrase}><label>Nuova frase segreta</label><div className="input-wrap"><KeyRound size={17}/><input type={showNewVaultPassphrase ? 'text' : 'password'} value={newVaultPassphrase} onChange={e => setNewVaultPassphrase(e.target.value)} minLength={12} autoComplete="new-password" required placeholder="Almeno 12 caratteri"/><button className="eye-btn" type="button" onClick={() => setShowNewVaultPassphrase(v => !v)} aria-label="Mostra nuova frase">{showNewVaultPassphrase ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div><label>Conferma nuova frase</label><div className="input-wrap"><KeyRound size={17}/><input type={showNewVaultPassphraseConfirm ? 'text' : 'password'} value={newVaultPassphraseConfirm} onChange={e => setNewVaultPassphraseConfirm(e.target.value)} minLength={12} autoComplete="new-password" required placeholder="Ripeti la nuova frase"/><button className="eye-btn" type="button" onClick={() => setShowNewVaultPassphraseConfirm(v => !v)} aria-label="Mostra conferma nuova frase">{showNewVaultPassphraseConfirm ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div><p className="card-sub settings-warning">Non chiudere la pagina durante la procedura. Gli originali vengono eliminati solo dopo la verifica di tutte le nuove copie.</p><button className="primary-btn copy-btn" disabled={rotationBusy}>{rotationBusy ? <><LoaderCircle className="spin" size={17}/> Aggiornamento in corso…</> : <><ShieldCheck size={17}/> Ricifra e aggiorna la frase</>}</button></form>{rotationProgress && <div className="incoming-share-status"><LoaderCircle className="spin" size={17}/>{rotationProgress}</div>}</div></div>}
       {previewUrl && <div className="modal-backdrop" onClick={() => {URL.revokeObjectURL(previewUrl);setPreviewUrl('');setPreviewName('');}}><div className="share-modal video-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => {URL.revokeObjectURL(previewUrl);setPreviewUrl('');setPreviewName('');}}><X size={18}/></button><div className="section-kicker">DECIFRATO SOLO IN MEMORIA</div><h2>{previewName}</h2><div className="video-player-wrap"><video ref={videoElementRef} src={previewUrl} controls autoPlay playsInline style={{width:'100%',maxHeight:'60vh',marginTop:16,background:'#000'}}/><button className="fullscreen-btn" onClick={requestVideoFullscreen}><Maximize2 size={17}/> Schermo intero</button></div></div></div>}
       {renameItem && <div className="modal-backdrop" onClick={() => !renameBusy && setRenameItem(null)}><div className="share-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => !renameBusy && setRenameItem(null)}><X size={18}/></button><div className="modal-icon"><Pencil size={21}/></div><div className="section-kicker">MODIFICA VIDEO</div><h2>Rinomina video</h2><p>Modifica il nome con cui compare nella tua libreria. Il contenuto cifrato non viene modificato.</p><form onSubmit={saveRename}><input className="rename-input" value={renameValue} onChange={e => setRenameValue(e.target.value)} maxLength={100} autoFocus placeholder="Nome del video"/><button className="primary-btn copy-btn" disabled={renameBusy}>{renameBusy ? <LoaderCircle className="spin" size={17}/> : <Check size={17}/>} Salva nome</button></form></div></div>}
       {shareItem && <div className="modal-backdrop" onClick={() => {setShareItem(null);setShareUrl('');setCopyFile(null);}}><div className="share-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => {setShareItem(null);setShareUrl('');setCopyFile(null);}}><X size={18}/></button><div className="modal-icon"><Share2 size={21}/></div><div className="section-kicker">CONDIVISIONE SICURA</div><h2>Condividi questo video</h2><p>Scegli se inviare un link temporaneo oppure una copia del file, che resterà sul dispositivo di chi la riceve.</p><div className="share-file"><Film size={17}/><span>{shareItem.displayName || getDisplayName(shareItem.name)}</span></div><button className="secondary-share-btn" disabled={shareBusy} onClick={createTemporaryLink}>{shareBusy && !copyFile ? <LoaderCircle className="spin" size={16}/> : <Clock3 size={16}/>} Crea link valido 1 ora</button>{shareUrl && <><div className="share-link">{shareUrl}</div><button className="primary-btn copy-btn" onClick={copyShare}>{copied ? <><Check size={17}/> Link copiato</> : <><Copy size={17}/> Copia link</>}</button></>}<div className="share-divider">OPPURE</div><button className="primary-btn copy-btn" disabled={shareBusy} onClick={copyFile ? sendPreparedCopy : prepareCopy}>{shareBusy ? <><LoaderCircle className="spin" size={17}/> Preparo la copia…</> : copyFile ? <><Share2 size={17}/> Invia la copia</> : <><Download size={17}/> Prepara una copia da inviare</>}</button><div className="expiry-note"><ShieldCheck size={14}/> La copia inviata non dipende da Vault e non scade. Il link invece dura 60 minuti.</div></div></div>}
