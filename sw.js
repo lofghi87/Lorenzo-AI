@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'lorenzo-ai-shell-v10';
+const CACHE_NAME = 'lorenzo-ai-shell-v11';
 const APP_SHELL = [
   '/',
   '/index.html',
