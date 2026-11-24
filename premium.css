@@ -1249,3 +1249,36 @@ body.is-standalone .app {
   height: var(--app-viewport-height);
   min-height: 0;
 }
+
+
+/* Stabilità compositore iOS: la tastiera non deve spostare tutta l'interfaccia. */
+#prompt {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  font-size: 16px !important;
+  line-height: 1.5;
+  -webkit-appearance: none;
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
+}
+body.ios-keyboard-layout.keyboard-open .app {
+  transform: translate3d(0, var(--app-visual-offset-top, 0px), 0);
+}
+body.ios-keyboard-layout.keyboard-open .composer-wrap {
+  transform: translate3d(0, calc(-1 * var(--app-keyboard-inset, 0px)), 0);
+  transition: none !important;
+  will-change: transform;
+}
+body.ios-keyboard-layout.keyboard-open .chat-area {
+  padding-bottom: max(12px, var(--app-keyboard-inset, 0px));
+}
+@media (max-width: 760px) {
+  body.ios-keyboard-layout.keyboard-open .composer-wrap {
+    transition: none !important;
+  }
+}
