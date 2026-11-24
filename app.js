@@ -753,8 +753,16 @@ function scrollBottom() {
 function resizeInput() {
   if (!promptEl || !sendBtn) return;
 
+  // Misura l'altezza effettiva consentita dal CSS (più bassa sui telefoni)
+  // ed evita che la textarea continui a crescere oltre il limite.
   promptEl.style.height = 'auto';
-  promptEl.style.height = Math.min(promptEl.scrollHeight, 180) + 'px';
+  const computedMaxHeight = Number.parseFloat(getComputedStyle(promptEl).maxHeight);
+  const maxHeight = Number.isFinite(computedMaxHeight) && computedMaxHeight > 0
+    ? computedMaxHeight
+    : 180;
+  const contentHeight = promptEl.scrollHeight;
+  promptEl.style.height = Math.min(contentHeight, maxHeight) + 'px';
+  promptEl.style.overflowY = contentHeight > maxHeight + 1 ? 'auto' : 'hidden';
 
   const hasContent = Boolean(promptEl.value.trim()) || selectedAttachments.length > 0;
   sendBtn.disabled = busy || !hasContent || !authReady;
