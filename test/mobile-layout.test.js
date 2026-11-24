@@ -42,7 +42,7 @@ test('iOS keyboard keeps the app viewport stable and moves only the composer', (
 test('message textarea remains readable and scrolls internally when it reaches its height limit', () => {
   const app = read('app.js');
   assert.match(app, /computedMaxHeight = Number\.parseFloat\(getComputedStyle\(promptEl\)\.maxHeight\)/);
-  assert.match(app, /promptEl\.overflowY = contentHeight > maxHeight \+ 1 \? 'auto' : 'hidden'/);
+  assert.match(app, /promptEl\.style\.overflowY = contentHeight > maxHeight \+ 1 \? 'auto' : 'hidden'/);
   assert.match(premiumCss, /#prompt\s*\{[^}]*font-size:\s*16px !important/s);
   assert.match(premiumCss, /#prompt\s*\{[^}]*touch-action:\s*pan-y/s);
 });
