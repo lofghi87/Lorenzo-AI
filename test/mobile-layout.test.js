@@ -29,11 +29,22 @@ test('installed chat composer stays in the flex layout rather than using a stale
   assert.match(premiumCss.slice(-1800), /\.app\s*\{[^}]*min-height:\s*0/s);
 });
 
-test('standalone mode syncs the visible viewport and handles the on-screen keyboard', () => {
+test('iOS keyboard keeps the app viewport stable and moves only the composer', () => {
   assert.match(pwa, /root\.classList\.add\('is-standalone'\)/);
-  assert.match(pwa, /window\.visualViewport\?\.addEventListener\('resize',\s*syncViewportHeight/);
-  assert.match(pwa, /const keyboardOpen = editing/);
-  assert.match(pwa, /height = keyboardOpen \? Math\.min\(layoutHeight, visibleHeight\) : layoutHeight/);
+  assert.match(pwa, /const iosKeyboardLayout = isIOS\(\)/);
+  assert.match(pwa, /if \(!keyboardViewportReduced\)\s*\{\s*stableLayoutHeight = measuredHeight/s);
+  assert.match(pwa, /const keyboardInset = iosKeyboardLayout && keyboardViewportReduced/);
+  assert.match(pwa, /window\.visualViewport\?\.addEventListener\('scroll',\s*syncViewportHeight/);
+  assert.match(premiumCss, /body\.ios-keyboard-layout\.keyboard-open \.composer-wrap\s*\{[^}]*app-keyboard-inset/s);
+  assert.match(premiumCss, /body\.ios-keyboard-layout\.keyboard-open \.app\s*\{[^}]*app-visual-offset-top/s);
+});
+
+test('message textarea remains readable and scrolls internally when it reaches its height limit', () => {
+  const app = read('app.js');
+  assert.match(app, /computedMaxHeight = Number\.parseFloat\(getComputedStyle\(promptEl\)\.maxHeight\)/);
+  assert.match(app, /promptEl\.overflowY = contentHeight > maxHeight \+ 1 \? 'auto' : 'hidden'/);
+  assert.match(premiumCss, /#prompt\s*\{[^}]*font-size:\s*16px !important/s);
+  assert.match(premiumCss, /#prompt\s*\{[^}]*touch-action:\s*pan-y/s);
 });
 
 test('zoom prevention is limited to installed mode; regular Safari retains its normal viewport', () => {
