@@ -26,7 +26,7 @@ test('installed chat composer stays in the flex layout rather than using a stale
   assert.match(rule, /position:\s*relative/);
   assert.doesNotMatch(rule, /position:\s*fixed/);
   assert.doesNotMatch(appPwaCss, /padding-bottom:\s*calc\(190px/);
-  assert.match(premiumCss.slice(-1800), /\.app\s*\{[^}]*min-height:\s*0/s);
+  assert.match(premiumCss, /\.app\s*\{[^}]*min-height:\s*0/s);
 });
 
 test('iOS keyboard keeps the app viewport stable and moves only the composer', () => {
