@@ -46,37 +46,61 @@
     body?.classList.remove('is-standalone');
   }
 
-  // Mantieni il layout sulla viewport del dispositivo, non su quella ridotta
-  // che iOS a volte riporta alla web app Home anche quando la tastiera è chiusa.
-  // La visualViewport viene usata per comprimere il layout durante la tastiera.
+  // Su iOS la tastiera riduce la visual viewport e può anche spostarla.
+  // Non ridimensioniamo l'intera app: manteniamo stabile la viewport di layout
+  // e solleviamo soltanto il compositore sopra la tastiera.
+  const iosKeyboardLayout = isIOS();
+  if (iosKeyboardLayout) body?.classList.add('ios-keyboard-layout');
+
+  let stableLayoutHeight = Math.max(
+    1,
+    Number(window.innerHeight) || 0,
+    Number(root.clientHeight) || 0
+  );
   let viewportFrame = 0;
+
   function syncViewportHeight() {
     if (viewportFrame) cancelAnimationFrame(viewportFrame);
     viewportFrame = requestAnimationFrame(() => {
       viewportFrame = 0;
-      const layoutHeight = Math.max(
+
+      const measuredHeight = Math.max(
         1,
         Number(window.innerHeight) || 0,
         Number(root.clientHeight) || 0
       );
-      const visibleHeight = Number(window.visualViewport?.height) || layoutHeight;
+      const visualViewport = window.visualViewport;
+      const visibleHeight = Number(visualViewport?.height) || measuredHeight;
+      const visualOffsetTop = Number(visualViewport?.offsetTop) || 0;
       const focusedElement = document.activeElement;
       const editing = Boolean(focusedElement?.matches?.(
         'input, textarea, select, [contenteditable="true"]'
       ));
-      const keyboardOpen = editing &&
-        visibleHeight < layoutHeight - Math.max(100, layoutHeight * 0.16);
+      const keyboardThreshold = Math.max(100, stableLayoutHeight * 0.16);
+      const keyboardViewportReduced =
+        visibleHeight < stableLayoutHeight - keyboardThreshold;
+      const keyboardOpen = editing && keyboardViewportReduced;
 
-      let height;
-      if (standalone) {
-        height = keyboardOpen ? Math.min(layoutHeight, visibleHeight) : layoutHeight;
-      } else {
-        // Nel browser normale segui la viewport visibile anche quando le barre
-        // di Safari cambiano altezza.
-        height = visibleHeight > 0 ? visibleHeight : layoutHeight;
+      // Non sostituire l'altezza di riferimento con quella ridotta dalla
+      // tastiera: altrimenti body, header e chat vengono traslati insieme.
+      if (!keyboardViewportReduced) {
+        stableLayoutHeight = measuredHeight;
       }
 
+      const layoutHeight = Math.max(1, stableLayoutHeight);
+      const height = iosKeyboardLayout
+        ? layoutHeight
+        : (visibleHeight > 0 ? visibleHeight : layoutHeight);
+      const keyboardInset = iosKeyboardLayout && keyboardViewportReduced
+        ? Math.max(0, layoutHeight - visibleHeight)
+        : 0;
+
       root.style.setProperty('--app-viewport-height', Math.round(height) + 'px');
+      root.style.setProperty('--app-keyboard-inset', Math.round(keyboardInset) + 'px');
+      root.style.setProperty(
+        '--app-visual-offset-top',
+        Math.round(keyboardOpen && iosKeyboardLayout ? visualOffsetTop : 0) + 'px'
+      );
       body?.classList.toggle('keyboard-open', keyboardOpen);
     });
   }
@@ -88,8 +112,12 @@
     setTimeout(syncViewportHeight, 180);
   }, { passive: true });
   window.visualViewport?.addEventListener('resize', syncViewportHeight, { passive: true });
+  window.visualViewport?.addEventListener('scroll', syncViewportHeight, { passive: true });
   document.addEventListener('focusin', () => setTimeout(syncViewportHeight, 60));
-  document.addEventListener('focusout', () => setTimeout(syncViewportHeight, 180));
+  document.addEventListener('focusout', () => {
+    setTimeout(syncViewportHeight, 180);
+    setTimeout(syncViewportHeight, 420);
+  });
   window.addEventListener('pageshow', syncViewportHeight);
 
   let deferredPrompt = null;
