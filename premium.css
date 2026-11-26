@@ -1266,8 +1266,11 @@ body.is-standalone .app {
   -webkit-overflow-scrolling: touch;
   overflow-x: hidden;
 }
+/* Non trasformare .app quando la tastiera iOS è aperta:
+   la trasformazione crea un containing block e sposta anche la sidebar
+   position:fixed, che su Safari può comparire a metà schermo. */
 body.ios-keyboard-layout.keyboard-open .app {
-  transform: translate3d(0, var(--app-visual-offset-top, 0px), 0);
+  transform: none !important;
 }
 body.ios-keyboard-layout.keyboard-open .composer-wrap {
   transform: translate3d(0, calc(-1 * var(--app-keyboard-inset, 0px)), 0);
