@@ -327,7 +327,11 @@ document.addEventListener('pointerdown', event => {
   if (menu && !menu.hidden && !menu.contains(event.target)) closeHistoryContextMenu();
 });
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') closeHistoryContextMenu();
+  if (event.key === 'Escape') {
+    closeHistoryContextMenu();
+    closeProfileMenu();
+    if (window.matchMedia('(max-width: 760px)').matches) closeSidebar();
+  }
 });
 window.addEventListener('resize', closeHistoryContextMenu);
 window.addEventListener('scroll', closeHistoryContextMenu, true);
@@ -1610,6 +1614,75 @@ async function sendMessage(text) {
   scrollBottom();
 }
 
+function closeSidebar() {
+  $('#sidebar')?.classList.remove('open');
+  const backdrop = $('#sidebarBackdrop');
+  if (backdrop) backdrop.hidden = true;
+  $('#menuBtn')?.setAttribute('aria-expanded', 'false');
+  document.body.classList.remove('sidebar-open');
+}
+
+function openSidebar() {
+  $('#sidebar')?.classList.add('open');
+  const backdrop = $('#sidebarBackdrop');
+  if (backdrop) backdrop.hidden = false;
+  $('#menuBtn')?.setAttribute('aria-expanded', 'true');
+  document.body.classList.add('sidebar-open');
+}
+
+function setDesktopSidebarCollapsed(collapsed) {
+  if (window.matchMedia('(max-width: 760px)').matches) return;
+  document.body.classList.toggle('sidebar-collapsed', collapsed);
+  const button = $('#desktopSidebarBtn');
+  button?.setAttribute('aria-expanded', String(!collapsed));
+  button?.setAttribute('aria-label', collapsed ? 'Espandi barra laterale' : 'Comprimi barra laterale');
+  if (button) button.title = collapsed ? 'Espandi barra laterale' : 'Comprimi barra laterale';
+  try { localStorage.setItem('lorenzo-ai-sidebar-collapsed', collapsed ? '1' : '0'); } catch {}
+}
+
+function syncSidebarLayout() {
+  const mobile = window.matchMedia('(max-width: 760px)').matches;
+  const desktopButton = $('#desktopSidebarBtn');
+  if (desktopButton) desktopButton.hidden = mobile;
+  if (mobile) {
+    document.body.classList.remove('sidebar-collapsed');
+    closeSidebar();
+  } else {
+    closeSidebar();
+    let collapsed = false;
+    try { collapsed = localStorage.getItem('lorenzo-ai-sidebar-collapsed') === '1'; } catch {}
+    setDesktopSidebarCollapsed(collapsed);
+  }
+}
+
+$('#desktopSidebarBtn')?.addEventListener('click', () => {
+  setDesktopSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+});
+$('#menuBtn')?.addEventListener('click', openSidebar);
+$('#closeSidebar')?.addEventListener('click', closeSidebar);
+$('#sidebarBackdrop')?.addEventListener('click', closeSidebar);
+window.matchMedia('(max-width: 760px)').addEventListener?.('change', syncSidebarLayout);
+syncSidebarLayout();
+
+$('#stopBtn')?.addEventListener('click', () => {
+  if (!activeRequestController || activeRequestController.signal.aborted) return;
+  activeRequestController.abort();
+  const button = $('#stopBtn');
+  if (button) {
+    button.disabled = true;
+    button.setAttribute('aria-label', 'Interruzione in corso');
+    button.title = 'Interruzione in corso';
+  }
+  showToast('Interruzione della generazione…');
+});
+
+document.addEventListener('pointerdown', event => {
+  const menu = $('#profileMenu');
+  if (menu && !menu.hidden && !menu.contains(event.target) && !$('#accountBtn')?.contains(event.target)) {
+    closeProfileMenu();
+  }
+});
+
 /* Eventi del compositore. */
 $('#chatForm').addEventListener('submit', event => {
   event.preventDefault();
@@ -1669,8 +1742,6 @@ if (imageModeBtn) {
 }
 
 $('#newChat').onclick = newChat;
-$('#menuBtn').onclick = () => $('#sidebar').classList.add('open');
-$('#closeSidebar').onclick = () => $('#sidebar').classList.remove('open');
 
 document.querySelectorAll('.suggestion').forEach(button => {
   button.addEventListener('click', () => sendMessage(button.dataset.prompt));
@@ -1955,33 +2026,45 @@ $('#settingsBtn').onclick = async () => {
 
 $('#refreshUsageBtn')?.addEventListener('click', refreshImageUsage);
 
-function toggleTheme() {
-  document.body.classList.toggle('light');
-  try {
-    localStorage.setItem(
-      'lorenzo-ai-theme',
-      document.body.classList.contains('light') ? 'light' : 'dark'
-    );
-  } catch {}
-  const isLight = document.body.classList.contains('light');
+function applyTheme(mode, persist = true) {
+  const validMode = ['dark', 'light', 'auto'].includes(mode) ? mode : 'dark';
+  const prefersLight = window.matchMedia?.('(prefers-color-scheme: light)').matches === true;
+  const effectiveLight = validMode === 'light' || (validMode === 'auto' && prefersLight);
+  document.body.dataset.theme = validMode;
+  document.body.classList.toggle('light', effectiveLight);
+  if (persist) {
+    try { localStorage.setItem('lorenzo-ai-theme', validMode); } catch {}
+  }
+
+  const labels = {
+    dark: ['Tema scuro attivo', 'Passa al tema chiaro'],
+    light: ['Tema chiaro attivo', 'Usa tema automatico'],
+    auto: ['Tema automatico attivo', 'Passa al tema scuro']
+  };
+  const [statusText, actionText] = labels[validMode];
   const themeStatus = $('#settingsThemeStatus');
-  const themeSettingAction = $('#settingsThemeAction');
-  if (themeStatus) themeStatus.textContent = isLight ? 'Tema chiaro attivo' : 'Tema scuro attivo';
-  if (themeSettingAction) themeSettingAction.textContent = isLight ? 'Usa tema scuro' : 'Usa tema chiaro';
+  const themeAction = $('#settingsThemeAction');
+  if (themeStatus) themeStatus.textContent = statusText;
+  if (themeAction) themeAction.textContent = actionText;
+}
+
+function toggleTheme() {
+  let currentTheme = 'dark';
+  try { currentTheme = localStorage.getItem('lorenzo-ai-theme') || 'dark'; } catch {}
+  const nextTheme = currentTheme === 'dark' ? 'light' : currentTheme === 'light' ? 'auto' : 'dark';
+  applyTheme(nextTheme);
 }
 
 window.toggleTheme = toggleTheme;
+window.applyLorenzoTheme = applyTheme;
 
-try {
-  if (localStorage.getItem('lorenzo-ai-theme') === 'light') {
-    document.body.classList.add('light');
-  }
-} catch {}
-
-const themeStatus = $('#settingsThemeStatus');
-const themeSettingAction = $('#settingsThemeAction');
-if (themeStatus) themeStatus.textContent = document.body.classList.contains('light') ? 'Tema chiaro attivo' : 'Tema scuro attivo';
-if (themeSettingAction) themeSettingAction.textContent = document.body.classList.contains('light') ? 'Usa tema scuro' : 'Usa tema chiaro';
+let savedTheme = 'dark';
+try { savedTheme = localStorage.getItem('lorenzo-ai-theme') || 'dark'; } catch {}
+applyTheme(savedTheme, false);
+const systemThemeQuery = window.matchMedia?.('(prefers-color-scheme: light)');
+systemThemeQuery?.addEventListener?.('change', () => {
+  if (document.body.dataset.theme === 'auto') applyTheme('auto', false);
+});
 
 setupAccountButton();
 
