@@ -123,3 +123,32 @@ test('account data settings export loaded conversations as JSON', () => {
   assert.match(app, /lorenzo-ai-export-v1/);
   assert.match(html, /id="exportAllChatsBtn"/);
 });
+
+
+test('conversation sharing uses native share when available and clipboard fallback', () => {
+  const fs = require('node:fs');
+  const app = fs.readFileSync(require('node:path').join(__dirname, '..', 'app.js'), 'utf8');
+  assert.match(app, /async function shareChat\(/);
+  assert.match(app, /typeof navigator\\.share === 'function'/);
+  assert.match(app, /copyText\(text\)/);
+  assert.match(app, /data-history-action="share"/);
+});
+
+test('appearance settings expose explicit dark, light and automatic choices', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const memory = fs.readFileSync(path.join(__dirname, '..', 'memory-ui.js'), 'utf8');
+  assert.match(html, /id="themeModeOptions"/);
+  assert.match(html, /data-theme-mode="dark"/);
+  assert.match(html, /data-theme-mode="light"/);
+  assert.match(html, /data-theme-mode="auto"/);
+  assert.match(memory, /applyLorenzoTheme\(button\.dataset\.themeMode\)/);
+});
+
+test('global search can be focused with the platform search shortcut', () => {
+  const fs = require('node:fs');
+  const app = fs.readFileSync(require('node:path').join(__dirname, '..', 'app.js'), 'utf8');
+  assert.match(app, /event\.metaKey \|\| event\.ctrlKey/);
+  assert.match(app, /historySearch.*focus/);
+});

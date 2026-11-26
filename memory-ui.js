@@ -62,6 +62,11 @@
     const action = $('#settingsThemeAction');
     if (status) status.textContent = statusText;
     if (action) action.textContent = actionText;
+    document.querySelectorAll('[data-theme-mode]').forEach(button => {
+      const selected = button.dataset.themeMode === mode;
+      button.classList.toggle('selected', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
   }
 
   function updateMemoryControls() {
@@ -336,8 +341,24 @@
     if (signIn) signIn.hidden = Boolean(currentUser);
   });
   $('#settingsThemeRow')?.addEventListener('click', () => {
-    if (typeof window.toggleTheme === 'function') window.toggleTheme();
+    const options = $('#themeModeOptions');
+    const button = $('#settingsThemeRow');
+    if (!options || !button) return;
+    options.hidden = !options.hidden;
+    button.setAttribute('aria-expanded', String(!options.hidden));
     updateSettingsThemeText();
+  });
+  document.querySelectorAll('[data-theme-mode]').forEach(button => {
+    button.addEventListener('click', () => {
+      if (typeof window.applyLorenzoTheme === 'function') {
+        window.applyLorenzoTheme(button.dataset.themeMode);
+      }
+      const options = $('#themeModeOptions');
+      const row = $('#settingsThemeRow');
+      if (options) options.hidden = true;
+      if (row) row.setAttribute('aria-expanded', 'false');
+      updateSettingsThemeText();
+    });
   });
   $('#memoryBackBtn')?.addEventListener('click', () => setPage('home'));
   $('#openMemorySummaryButton')?.addEventListener('click', async () => {
