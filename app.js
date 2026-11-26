@@ -31,6 +31,7 @@ const ALLOWED_TYPES = new Set([
 let chats = [];
 let activeId = null;
 let busy = false;
+let activeRequestController = null;
 let toastTimer;
 let currentUser = null;
 let authReady = false;
@@ -656,7 +657,7 @@ async function copyText(text) {
   if (!copied) throw new Error('Copia non riuscita.');
 }
 
-async function readStreamingReply(response, onUpdate) {
+async function readStreamingReply(response, onUpdate, signal = null) {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'Errore del servizio AI.');
@@ -735,6 +736,12 @@ async function readStreamingReply(response, onUpdate) {
     }
     buffer += decoder.decode();
     consumeEvents(true);
+  } catch (error) {
+    if (signal?.aborted || error?.name === 'AbortError') {
+      try { await reader.cancel(); } catch {}
+      return answer.trim();
+    }
+    throw error;
   } finally {
     try { reader.releaseLock(); } catch {}
   }
@@ -752,6 +759,12 @@ function scrollBottom() {
 
 function resizeInput() {
   if (!promptEl || !sendBtn) return;
+
+  const stopButton = $('#stopBtn');
+  if (stopButton) {
+    stopButton.hidden = !activeRequestController;
+    stopButton.disabled = !activeRequestController || activeRequestController.signal.aborted;
+  }
 
   // Misura l'altezza effettiva consentita dal CSS (più bassa sui telefoni)
   // ed evita che la textarea continui a crescere oltre il limite.
@@ -806,14 +819,46 @@ function setThinkingState(el, label) {
   el.append(state);
 }
 
+function closeProfileMenu() {
+  const menu = $('#profileMenu');
+  const button = $('#accountBtn');
+  if (menu) menu.hidden = true;
+  button?.setAttribute('aria-expanded', 'false');
+}
+
+function toggleProfileMenu() {
+  const menu = $('#profileMenu');
+  const button = $('#accountBtn');
+  if (!menu || !button) return;
+  const willOpen = menu.hidden;
+  menu.hidden = !willOpen;
+  button.setAttribute('aria-expanded', String(willOpen));
+}
+
 function setupAccountButton() {
   const profile = $('.profile');
   if (!profile) return;
 
   profile.id = 'accountBtn';
-  profile.style.cssText =
-    'width:auto;min-width:76px;padding:0 16px;border-radius:24px;' +
-    'white-space:nowrap;font-size:14px;cursor:pointer';
+  profile.type = 'button';
+  profile.setAttribute('aria-haspopup', 'menu');
+  profile.setAttribute('aria-expanded', 'false');
+  profile.onclick = toggleProfileMenu;
+
+  $('#profileSettingsBtn')?.addEventListener('click', () => {
+    closeProfileMenu();
+    $('#settingsBtn')?.click();
+  });
+  $('#profileAuthBtn')?.addEventListener('click', async () => {
+    closeProfileMenu();
+    if (!currentUser) {
+      window.location.href = '/login.html';
+      return;
+    }
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) showToast(error.message);
+    else showToast('Disconnessione completata.');
+  });
 
   updateAccountButton();
 }
@@ -822,18 +867,26 @@ function updateAccountButton() {
   const btn = $('#accountBtn');
   if (!btn) return;
 
-  if (currentUser) {
-    btn.textContent = 'Esci';
-    btn.title = currentUser.email || 'Esci dal tuo account';
-    btn.onclick = async () => {
-      const { error } = await supabaseClient.auth.signOut();
-      if (error) showToast(error.message);
-    };
-  } else {
-    btn.textContent = 'Accedi';
-    btn.title = 'Accedi o crea un account';
-    btn.onclick = () => { window.location.href = '/login.html'; };
+  const email = currentUser?.email || '';
+  const initials = email.split('@')[0].split(/[._\\s-]+/)
+    .filter(Boolean).slice(0, 2).map(part => part[0].toUpperCase()).join('') || 'L';
+  btn.textContent = currentUser ? initials : 'Accedi';
+  btn.title = currentUser ? (email || 'Apri menu account') : 'Accedi o crea un account';
+  btn.setAttribute('aria-label', currentUser ? 'Menu account' : 'Accedi o crea un account');
+
+  const avatar = $('#profileMenuAvatar');
+  const name = $('#profileMenuName');
+  const menuEmail = $('#profileMenuEmail');
+  const authAction = $('#profileAuthBtn');
+  if (avatar) avatar.textContent = initials;
+  if (name) name.textContent = currentUser ? 'Account Lorenzo AI' : 'Benvenuto';
+  if (menuEmail) menuEmail.textContent = email || 'Non hai effettuato l’accesso';
+  if (authAction) {
+    const label = authAction.querySelector('span');
+    if (label) label.textContent = currentUser ? 'Esci dall’account' : 'Accedi o crea un account';
+    authAction.setAttribute('aria-label', currentUser ? 'Esci dall’account' : 'Accedi o crea un account');
   }
+  closeProfileMenu();
 }
 
 async function saveChat(chat) {
