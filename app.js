@@ -478,7 +478,7 @@ function openChat(chatId) {
   messagesEl.replaceChildren();
   c.messages.forEach((m, index) => {
     const bubble = addMessage(m.role, m.content, false, m.attachmentNames);
-    if (m.role === 'assistant' && String(m.content || '').trim()) {
+    if (String(m.content || '').trim()) {
       addMessageActions(bubble, c.id, index);
     }
     if (m.role === 'assistant' && typeof m.imagePath === 'string') {
@@ -705,6 +705,18 @@ function addMessageActions(bubble, chatId, messageIndex) {
     feedbackGroup.append(button);
   });
   actions.append(feedbackGroup);
+
+  if (canContinueResponse(chatId, messageIndex)) {
+    const continueButton = document.createElement('button');
+    continueButton.type = 'button';
+    continueButton.className = 'message-action-btn';
+    continueButton.dataset.messageAction = 'continue';
+    continueButton.setAttribute('aria-label', 'Continua risposta');
+    continueButton.title = 'Continua risposta';
+    continueButton.innerHTML = '<span aria-hidden="true">↳</span><span>Continua</span>';
+    continueButton.addEventListener('click', () => continueResponse(chatId, messageIndex));
+    actions.append(continueButton);
+  }
 
   if (canRegenerateResponse(chatId, messageIndex)) {
     const regenerateButton = document.createElement('button');
@@ -1430,6 +1442,89 @@ async function generateImage(promptText) {
   resizeInput();
   renderHistory();
   scrollBottom();
+}
+
+function canContinueResponse(chatId, messageIndex) {
+  const chat = chats.find(item => item.id === chatId);
+  const message = chat?.messages?.[messageIndex];
+  const previous = chat?.messages?.[messageIndex - 1];
+  return Boolean(chat && messageIndex === chat.messages.length - 1 &&
+    message?.role === 'assistant' && String(message.content || '').trim() &&
+    previous?.role === 'user' &&
+    !String(message.content || '').startsWith('Immagine generata per:'));
+}
+
+async function continueResponse(chatId, messageIndex) {
+  if (busy || !authReady) return;
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat || !canContinueResponse(chatId, messageIndex)) return;
+
+  const message = chat.messages[messageIndex];
+  const bubbleWrap = messagesEl.querySelectorAll('.message.assistant');
+  const bubble = bubbleWrap[bubbleWrap.length - 1]?.querySelector('.bubble');
+  if (!bubble) return;
+
+  busy = true;
+  resizeInput();
+  const original = String(message.content || '');
+  let addition = '';
+  const status = document.createElement('span');
+  status.className = 'thinking-state';
+  status.textContent = 'Continuo la risposta';
+  bubble.append(document.createElement('br'), status);
+
+  try {
+    const apiMessages = chat.messages.slice(-40).map(item => ({
+      role: item.role,
+      content: item.content || ''
+    }));
+    apiMessages.push({
+      role: 'user',
+      content: 'Continua la risposta precedente dal punto in cui si è interrotta o approfondisci la parte finale. Non ripetere quanto hai già scritto.'
+    });
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentUser) {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error || !data.session?.access_token) throw new Error('Sessione scaduta. Accedi nuovamente.');
+      headers.Authorization = 'Bearer ' + data.session.access_token;
+    }
+
+    const controller = new AbortController();
+    activeRequestController = controller;
+    resizeInput();
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ messages: apiMessages, stream: true }),
+      signal: controller.signal
+    });
+    addition = await readStreamingReply(response, partial => {
+      const area = $('#chatArea');
+      const keepAtBottom = area && area.scrollHeight - area.scrollTop - area.clientHeight < 140;
+      renderMarkdown(bubble, original + (partial ? '\n\n' + partial : ''), false);
+      if (keepAtBottom) scrollBottom();
+    }, controller.signal);
+    activeRequestController = null;
+    if (addition.trim()) {
+      message.content = original + '\n\n' + addition.trim();
+      renderMarkdown(bubble, message.content);
+      await saveChat(chat);
+    }
+  } catch (error) {
+    activeRequestController = null;
+    console.error('Errore continuazione risposta:', error);
+    renderMarkdown(bubble, original);
+    showToast(error?.name === 'AbortError'
+      ? 'Continuazione interrotta.'
+      : 'Non sono riuscito a continuare la risposta. ' + (error.message || 'Riprova.'));
+  } finally {
+    busy = false;
+    resizeInput();
+    renderHistory();
+    scrollBottom();
+    if (bubble.isConnected) addMessageActions(bubble, chatId, messageIndex);
+  }
 }
 
 async function regenerateResponse(chatId, messageIndex) {
