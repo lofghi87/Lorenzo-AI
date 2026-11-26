@@ -294,3 +294,38 @@ body.sidebar-collapsed .sidebar .side-bottom .status-dot {
 
 /* Quando si genera una risposta, mostra solo il comando di interruzione. */
 #sendBtn[hidden] { display: none !important; }
+
+/* Editing and response feedback controls */
+.edit-message-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 13px 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.edit-message-bar[hidden] { display: none !important; }
+.edit-message-bar button {
+  border: 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent2);
+  font: inherit;
+  cursor: pointer;
+}
+.edit-message-bar button:hover { background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.message-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.message-feedback { display: inline-flex; align-items: center; gap: 5px; }
+.feedback-btn.selected {
+  border-color: color-mix(in srgb, var(--accent2) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text);
+}
+.message.user .message-actions { justify-content: flex-end; }
+.message-actions .message-action-btn { min-height: 30px; }
+@media (max-width: 600px) {
+  .message-actions .message-action-btn { min-height: 34px; padding-inline: 8px; }
+  .message-feedback { gap: 3px; }
+}

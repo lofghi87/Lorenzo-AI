@@ -51,17 +51,11 @@
   }
 
   function updateSettingsThemeText() {
-    const mode = document.body.dataset.theme || (document.body.classList.contains('light') ? 'light' : 'dark');
-    const labels = {
-      dark: ['Tema scuro attivo', 'Passa al tema chiaro'],
-      light: ['Tema chiaro attivo', 'Usa tema automatico'],
-      auto: ['Tema automatico attivo', 'Passa al tema scuro']
-    };
-    const [statusText, actionText] = labels[mode] || labels.dark;
+    const isLight = document.body.classList.contains('light');
     const status = $('#settingsThemeStatus');
     const action = $('#settingsThemeAction');
-    if (status) status.textContent = statusText;
-    if (action) action.textContent = actionText;
+    if (status) status.textContent = isLight ? 'Tema chiaro attivo' : 'Tema scuro attivo';
+    if (action) action.textContent = isLight ? 'Usa tema scuro' : 'Usa tema chiaro';
   }
 
   function updateMemoryControls() {

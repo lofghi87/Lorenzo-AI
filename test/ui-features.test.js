@@ -75,3 +75,18 @@ test('theme preference supports dark, light and system automatic mode', () => {
   assert.match(app, /prefers-color-scheme: light/);
   assert.match(app, /applyTheme\(nextTheme\)/);
 });
+
+
+test('chat supports editing the latest plain-text user message and persisting response feedback', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(app, /function canEditUserMessage\(/);
+  assert.match(app, /function setEditingMessage\(/);
+  assert.match(app, /c\.messages\.splice\(editRef\.messageIndex \+ 1\)/);
+  assert.match(app, /data-feedback/);
+  assert.match(app, /feedback: m\.feedback/);
+  assert.match(html, /id="editMessageBar"/);
+  assert.match(html, /id="cancelEditMessage"/);
+});
