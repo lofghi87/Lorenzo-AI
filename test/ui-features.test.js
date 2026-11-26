@@ -75,3 +75,28 @@ test('theme preference supports dark, light and system automatic mode', () => {
   assert.match(app, /prefers-color-scheme: light/);
   assert.match(app, /applyTheme\(nextTheme\)/);
 });
+
+
+test('latest plain-text user message can be edited and response feedback is persisted', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(app, /function canEditUserMessage\(/);
+  assert.match(app, /function setEditingMessage\(/);
+  assert.match(app, /c\.messages\.splice\(editRef\.messageIndex \+ 1\)/);
+  assert.match(app, /data-feedback/);
+  assert.match(app, /feedback: m\.feedback/);
+  assert.match(html, /id="editMessageBar"/);
+  assert.match(html, /id="cancelEditMessage"/);
+});
+
+test('latest response can be continued through the streaming chat API', () => {
+  const fs = require('node:fs');
+  const app = fs.readFileSync(require('node:path').join(__dirname, '..', 'app.js'), 'utf8');
+  assert.match(app, /function canContinueResponse\(/);
+  assert.match(app, /async function continueResponse\(/);
+  assert.match(app, /Continua la risposta precedente/);
+  assert.ok(app.includes('message.content = original'));
+  assert.ok(app.includes('addition.trim()'));
+});
