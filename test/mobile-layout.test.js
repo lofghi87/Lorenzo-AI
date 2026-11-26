@@ -36,7 +36,7 @@ test('iOS keyboard keeps the app viewport stable and moves only the composer', (
   assert.match(pwa, /const keyboardInset = iosKeyboardLayout && keyboardViewportReduced/);
   assert.match(pwa, /window\.visualViewport\?\.addEventListener\('scroll',\s*syncViewportHeight/);
   assert.match(premiumCss, /body\.ios-keyboard-layout\.keyboard-open \.composer-wrap\s*\{[^}]*app-keyboard-inset/s);
-  assert.match(premiumCss, /body\.ios-keyboard-layout\.keyboard-open \.app\s*\{[^}]*app-visual-offset-top/s);
+  assert.match(premiumCss, /body\.ios-keyboard-layout\.keyboard-open \.app\s*\{[^}]*transform:\s*none !important/s);
 });
 
 test('message textarea remains readable and scrolls internally when it reaches its height limit', () => {
