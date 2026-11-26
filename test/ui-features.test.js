@@ -44,3 +44,13 @@ test('browser application scripts parse successfully', () => {
   execFileSync(process.execPath, ['--check', path.join(__dirname, '..', 'features.js')]);
   execFileSync(process.execPath, ['--check', path.join(__dirname, '..', 'app.js')]);
 });
+
+
+test('latest response can be continued through the streaming chat API', () => {
+  const fs = require('node:fs');
+  const app = fs.readFileSync(require('node:path').join(__dirname, '..', 'app.js'), 'utf8');
+  assert.match(app, /function canContinueResponse\(/);
+  assert.match(app, /async function continueResponse\(/);
+  assert.match(app, /Continua la risposta precedente/);
+  assert.match(app, /message\.content = original \+ '\\\\n\\\\n' \+ addition\.trim\(\)/);
+});

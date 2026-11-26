@@ -691,7 +691,9 @@ function addMessageActions(bubble, chatId, messageIndex) {
     button.setAttribute('aria-label', aria);
     button.title = aria;
     button.setAttribute('aria-pressed', String(message.feedback === value));
-    button.innerHTML = value === 'up' ? '<span aria-hidden="true">👍</span><span>Utile</span>' : '<span aria-hidden="true">👎</span><span>Non utile</span>';
+    button.innerHTML = value === 'up'
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v10H4V10h3Zm0 0 5-7c2 0 3 2 2 4l-1 3h5a2 2 0 0 1 2 2l-2 6a2 2 0 0 1-2 2H7"/></svg><span>Utile</span>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14V4H4v10h3Zm0 0 5 7c2 0 3-2 2-4l-1-3h5a2 2 0 0 0 2-2l-2-6a2 2 0 0 0-2-2H7"/></svg><span>Non utile</span>';
     button.addEventListener('click', async () => {
       message.feedback = message.feedback === value ? null : value;
       feedbackGroup.querySelectorAll('[data-feedback]').forEach(item => {
