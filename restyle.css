@@ -312,3 +312,10 @@ body.sidebar-collapsed .sidebar .side-bottom .status-dot {
 .history-toolbar { flex-wrap: wrap; }
 .archived-filter[aria-pressed="true"] { border-color: color-mix(in srgb, var(--accent2) 58%, var(--line)); background: color-mix(in srgb, var(--accent) 17%, transparent); color: var(--text); }
 #exportAllChatsBtn { width:100%; margin-top:12px; }
+
+/* Explicit appearance selector */
+.theme-mode-options { display:flex; gap:8px; padding:8px 10px 12px 54px; }
+.theme-mode-options[hidden] { display:none !important; }
+.theme-mode-options button { min-height:36px; padding:7px 13px; border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--muted); font:inherit; font-size:12px; cursor:pointer; }
+.theme-mode-options button:hover, .theme-mode-options button.selected { border-color:var(--accent2); background:color-mix(in srgb, var(--accent) 17%, var(--panel)); color:var(--text); }
+@media (max-width:520px) { .theme-mode-options { padding-left:12px; flex-wrap:wrap; } }

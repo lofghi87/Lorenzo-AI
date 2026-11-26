@@ -212,6 +212,7 @@ function ensureHistoryContextMenu() {
     '<button type="button" role="menuitem" data-history-action="pin"><span class="history-menu-icon">☆</span><span>Preferita</span></button>',
     '<button type="button" role="menuitem" data-history-action="archive"><span class="history-menu-icon">▣</span><span>Archivia</span></button>',
     '<button type="button" role="menuitem" data-history-action="rename"><span class="history-menu-icon">✎</span><span>Rinomina</span></button>',
+    '<button type="button" role="menuitem" data-history-action="share"><span class="history-menu-icon">↗</span><span>Condividi chat</span></button>',
     '<button type="button" role="menuitem" data-history-action="export"><span class="history-menu-icon">↓</span><span>Esporta chat</span></button>',
     '<div class="history-menu-divider"></div>',
     '<button type="button" role="menuitem" data-history-action="delete" class="danger"><span class="history-menu-icon">×</span><span>Elimina chat</span></button>'
@@ -242,6 +243,7 @@ function ensureHistoryContextMenu() {
       if (savePinnedChatIds(pinned)) renderHistory();
     } else if (action === 'archive') toggleChatArchive(chatId);
     else if (action === 'rename') void renameChat(chatId);
+    else if (action === 'share') void shareChat(chatId);
     else if (action === 'export') exportChat(chatId);
     else if (action === 'delete') void deleteChat(chatId);
   });
@@ -372,6 +374,12 @@ document.addEventListener('pointerdown', event => {
   if (menu && !menu.hidden && !menu.contains(event.target)) closeHistoryContextMenu();
 });
 document.addEventListener('keydown', event => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    if (window.matchMedia('(max-width: 760px)').matches) openSidebar();
+    $('#historySearch')?.focus();
+    return;
+  }
   if (event.key === 'Escape') {
     if (editingMessageRef) cancelEditingMessage();
     closeHistoryContextMenu();
@@ -409,6 +417,25 @@ async function renameChat(chatId) {
   if (!currentUser) saveLocalChats();
   renderHistory();
   showToast('Conversazione rinominata.');
+}
+
+async function shareChat(chatId) {
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat) return;
+  const title = chat.title || 'Conversazione Lorenzo AI';
+  const text = LorenzoChatFeatures.toMarkdown(chat);
+  try {
+    if (typeof navigator.share === 'function') {
+      await navigator.share({ title, text });
+      showToast('Condivisione completata.');
+      return;
+    }
+    await copyText(text);
+    showToast('Testo della conversazione copiato: puoi condividerlo dove preferisci.');
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    showToast('Non sono riuscito a condividere la conversazione.');
+  }
 }
 
 function exportChat(chatId) {
