@@ -31,6 +31,7 @@ const ALLOWED_TYPES = new Set([
 let chats = [];
 let activeId = null;
 let busy = false;
+let activeRequestController = null;
 let toastTimer;
 let currentUser = null;
 let authReady = false;
@@ -326,7 +327,11 @@ document.addEventListener('pointerdown', event => {
   if (menu && !menu.hidden && !menu.contains(event.target)) closeHistoryContextMenu();
 });
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') closeHistoryContextMenu();
+  if (event.key === 'Escape') {
+    closeHistoryContextMenu();
+    closeProfileMenu();
+    if (window.matchMedia('(max-width: 760px)').matches) closeSidebar();
+  }
 });
 window.addEventListener('resize', closeHistoryContextMenu);
 window.addEventListener('scroll', closeHistoryContextMenu, true);
@@ -448,6 +453,8 @@ function clearSelectedAttachments() {
 }
 
 function newChat() {
+  closeSidebar();
+  closeProfileMenu();
   activeId = null;
   messagesEl.replaceChildren();
   setWelcomeVisible(true);
@@ -480,7 +487,8 @@ function openChat(chatId) {
   resetImageMode();
   clearSelectedAttachments();
   renderHistory();
-  $('#sidebar')?.classList.remove('open');
+  closeSidebar();
+  closeProfileMenu();
   scrollBottom();
 }
 
@@ -656,7 +664,7 @@ async function copyText(text) {
   if (!copied) throw new Error('Copia non riuscita.');
 }
 
-async function readStreamingReply(response, onUpdate) {
+async function readStreamingReply(response, onUpdate, signal = null) {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'Errore del servizio AI.');
@@ -735,6 +743,12 @@ async function readStreamingReply(response, onUpdate) {
     }
     buffer += decoder.decode();
     consumeEvents(true);
+  } catch (error) {
+    if (signal?.aborted || error?.name === 'AbortError') {
+      try { await reader.cancel(); } catch {}
+      return answer.trim();
+    }
+    throw error;
   } finally {
     try { reader.releaseLock(); } catch {}
   }
@@ -752,6 +766,13 @@ function scrollBottom() {
 
 function resizeInput() {
   if (!promptEl || !sendBtn) return;
+
+  const stopButton = $('#stopBtn');
+  if (stopButton) {
+    stopButton.hidden = !activeRequestController;
+    stopButton.disabled = !activeRequestController || activeRequestController.signal.aborted;
+  }
+  sendBtn.hidden = Boolean(activeRequestController);
 
   // Misura l'altezza effettiva consentita dal CSS (più bassa sui telefoni)
   // ed evita che la textarea continui a crescere oltre il limite.
@@ -806,14 +827,46 @@ function setThinkingState(el, label) {
   el.append(state);
 }
 
+function closeProfileMenu() {
+  const menu = $('#profileMenu');
+  const button = $('#accountBtn');
+  if (menu) menu.hidden = true;
+  button?.setAttribute('aria-expanded', 'false');
+}
+
+function toggleProfileMenu() {
+  const menu = $('#profileMenu');
+  const button = $('#accountBtn');
+  if (!menu || !button) return;
+  const willOpen = menu.hidden;
+  menu.hidden = !willOpen;
+  button.setAttribute('aria-expanded', String(willOpen));
+}
+
 function setupAccountButton() {
   const profile = $('.profile');
   if (!profile) return;
 
   profile.id = 'accountBtn';
-  profile.style.cssText =
-    'width:auto;min-width:76px;padding:0 16px;border-radius:24px;' +
-    'white-space:nowrap;font-size:14px;cursor:pointer';
+  profile.type = 'button';
+  profile.setAttribute('aria-haspopup', 'menu');
+  profile.setAttribute('aria-expanded', 'false');
+  profile.onclick = toggleProfileMenu;
+
+  $('#profileSettingsBtn')?.addEventListener('click', () => {
+    closeProfileMenu();
+    $('#settingsBtn')?.click();
+  });
+  $('#profileAuthBtn')?.addEventListener('click', async () => {
+    closeProfileMenu();
+    if (!currentUser) {
+      window.location.href = '/login.html';
+      return;
+    }
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) showToast(error.message);
+    else showToast('Disconnessione completata.');
+  });
 
   updateAccountButton();
 }
@@ -822,18 +875,26 @@ function updateAccountButton() {
   const btn = $('#accountBtn');
   if (!btn) return;
 
-  if (currentUser) {
-    btn.textContent = 'Esci';
-    btn.title = currentUser.email || 'Esci dal tuo account';
-    btn.onclick = async () => {
-      const { error } = await supabaseClient.auth.signOut();
-      if (error) showToast(error.message);
-    };
-  } else {
-    btn.textContent = 'Accedi';
-    btn.title = 'Accedi o crea un account';
-    btn.onclick = () => { window.location.href = '/login.html'; };
+  const email = currentUser?.email || '';
+  const initials = email.split('@')[0].split(/[._\s-]+/)
+    .filter(Boolean).slice(0, 2).map(part => part[0].toUpperCase()).join('') || 'L';
+  btn.textContent = currentUser ? initials : 'Accedi';
+  btn.title = currentUser ? (email || 'Apri menu account') : 'Accedi o crea un account';
+  btn.setAttribute('aria-label', currentUser ? 'Menu account' : 'Accedi o crea un account');
+
+  const avatar = $('#profileMenuAvatar');
+  const name = $('#profileMenuName');
+  const menuEmail = $('#profileMenuEmail');
+  const authAction = $('#profileAuthBtn');
+  if (avatar) avatar.textContent = initials;
+  if (name) name.textContent = currentUser ? 'Account Lorenzo AI' : 'Benvenuto';
+  if (menuEmail) menuEmail.textContent = email || 'Non hai effettuato l’accesso';
+  if (authAction) {
+    const label = authAction.querySelector('span');
+    if (label) label.textContent = currentUser ? 'Esci dall’account' : 'Accedi o crea un account';
+    authAction.setAttribute('aria-label', currentUser ? 'Esci dall’account' : 'Accedi o crea un account');
   }
+  closeProfileMenu();
 }
 
 async function saveChat(chat) {
@@ -1331,10 +1392,14 @@ async function regenerateResponse(chatId, messageIndex) {
       headers.Authorization = 'Bearer ' + data.session.access_token;
     }
 
+    const requestController = new AbortController();
+    activeRequestController = requestController;
+    resizeInput();
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ messages: apiMessages, stream: true })
+      body: JSON.stringify({ messages: apiMessages, stream: true }),
+      signal: requestController.signal
     });
 
     reply = await readStreamingReply(response, partial => {
@@ -1343,16 +1408,23 @@ async function regenerateResponse(chatId, messageIndex) {
         area.scrollHeight - area.scrollTop - area.clientHeight < 140;
       renderMarkdown(thinking, partial, false);
       if (keepAtBottom) scrollBottom();
-    });
+    }, requestController.signal);
+    activeRequestController = null;
+    if (requestController.signal.aborted && !reply.trim()) {
+      throw Object.assign(new Error('Generazione interrotta.'), { name: 'AbortError' });
+    }
     $('#connectionStatus').textContent = 'AI collegata';
   } catch (error) {
+    activeRequestController = null;
     console.error('Errore rigenerazione risposta:', error);
     chat.messages.push(previousResponse);
     thinking.closest('.message')?.remove();
     await saveChat(chat);
     openChat(chatId);
-    showToast('Rigenerazione non riuscita: ho mantenuto la risposta precedente. ' +
-      (error.message || 'Riprova tra poco.'));
+    showToast(error?.name === 'AbortError'
+      ? 'Rigenerazione interrotta. Ho mantenuto la risposta precedente.'
+      : 'Rigenerazione non riuscita: ho mantenuto la risposta precedente. ' +
+        (error.message || 'Riprova tra poco.'));
     busy = false;
     resizeInput();
     renderHistory();
@@ -1498,10 +1570,14 @@ async function sendMessage(text) {
     const headers = { 'Content-Type': 'application/json' };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
+    const requestController = new AbortController();
+    activeRequestController = requestController;
+    resizeInput();
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ messages: apiMessages, stream: true })
+      body: JSON.stringify({ messages: apiMessages, stream: true }),
+      signal: requestController.signal
     });
 
     reply = await readStreamingReply(res, partial => {
@@ -1510,24 +1586,103 @@ async function sendMessage(text) {
         area.scrollHeight - area.scrollTop - area.clientHeight < 140;
       renderMarkdown(thinking, partial, false);
       if (keepAtBottom) scrollBottom();
-    });
+    }, requestController.signal);
+    activeRequestController = null;
+    if (requestController.signal.aborted && !reply.trim()) {
+      throw Object.assign(new Error('Generazione interrotta.'), { name: 'AbortError' });
+    }
     $('#connectionStatus').textContent = 'AI collegata';
   } catch (error) {
+    activeRequestController = null;
     console.error('Errore invio messaggio:', error);
-    reply =
-      'Non sono riuscito a completare la richiesta.\n\n' +
-      (error.message || 'Controlla la connessione e riprova.');
+    reply = error?.name === 'AbortError'
+      ? ''
+      : 'Non sono riuscito a completare la richiesta.\n\n' +
+        (error.message || 'Controlla la connessione e riprova.');
   }
 
-  renderAssistantText(thinking, reply, true);
-  c.messages.push({ role: 'assistant', content: reply });
+  if (reply.trim()) {
+    renderAssistantText(thinking, reply, true);
+    c.messages.push({ role: 'assistant', content: reply });
+    addMessageActions(thinking, c.id, c.messages.length - 1);
+  } else {
+    thinking.closest('.message')?.remove();
+  }
   await saveChat(c);
-  addMessageActions(thinking, c.id, c.messages.length - 1);
   busy = false;
   resizeInput();
   renderHistory();
   scrollBottom();
 }
+
+function closeSidebar() {
+  $('#sidebar')?.classList.remove('open');
+  const backdrop = $('#sidebarBackdrop');
+  if (backdrop) backdrop.hidden = true;
+  $('#menuBtn')?.setAttribute('aria-expanded', 'false');
+  document.body.classList.remove('sidebar-open');
+}
+
+function openSidebar() {
+  $('#sidebar')?.classList.add('open');
+  const backdrop = $('#sidebarBackdrop');
+  if (backdrop) backdrop.hidden = false;
+  $('#menuBtn')?.setAttribute('aria-expanded', 'true');
+  document.body.classList.add('sidebar-open');
+}
+
+function setDesktopSidebarCollapsed(collapsed) {
+  if (window.matchMedia('(max-width: 760px)').matches) return;
+  document.body.classList.toggle('sidebar-collapsed', collapsed);
+  const button = $('#desktopSidebarBtn');
+  button?.setAttribute('aria-expanded', String(!collapsed));
+  button?.setAttribute('aria-label', collapsed ? 'Espandi barra laterale' : 'Comprimi barra laterale');
+  if (button) button.title = collapsed ? 'Espandi barra laterale' : 'Comprimi barra laterale';
+  try { localStorage.setItem('lorenzo-ai-sidebar-collapsed', collapsed ? '1' : '0'); } catch {}
+}
+
+function syncSidebarLayout() {
+  const mobile = window.matchMedia('(max-width: 760px)').matches;
+  const desktopButton = $('#desktopSidebarBtn');
+  if (desktopButton) desktopButton.hidden = mobile;
+  if (mobile) {
+    document.body.classList.remove('sidebar-collapsed');
+    closeSidebar();
+  } else {
+    closeSidebar();
+    let collapsed = false;
+    try { collapsed = localStorage.getItem('lorenzo-ai-sidebar-collapsed') === '1'; } catch {}
+    setDesktopSidebarCollapsed(collapsed);
+  }
+}
+
+$('#desktopSidebarBtn')?.addEventListener('click', () => {
+  setDesktopSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+});
+$('#menuBtn')?.addEventListener('click', openSidebar);
+$('#closeSidebar')?.addEventListener('click', closeSidebar);
+$('#sidebarBackdrop')?.addEventListener('click', closeSidebar);
+window.matchMedia('(max-width: 760px)').addEventListener?.('change', syncSidebarLayout);
+syncSidebarLayout();
+
+$('#stopBtn')?.addEventListener('click', () => {
+  if (!activeRequestController || activeRequestController.signal.aborted) return;
+  activeRequestController.abort();
+  const button = $('#stopBtn');
+  if (button) {
+    button.disabled = true;
+    button.setAttribute('aria-label', 'Interruzione in corso');
+    button.title = 'Interruzione in corso';
+  }
+  showToast('Interruzione della generazione…');
+});
+
+document.addEventListener('pointerdown', event => {
+  const menu = $('#profileMenu');
+  if (menu && !menu.hidden && !menu.contains(event.target) && !$('#accountBtn')?.contains(event.target)) {
+    closeProfileMenu();
+  }
+});
 
 /* Eventi del compositore. */
 $('#chatForm').addEventListener('submit', event => {
@@ -1588,8 +1743,6 @@ if (imageModeBtn) {
 }
 
 $('#newChat').onclick = newChat;
-$('#menuBtn').onclick = () => $('#sidebar').classList.add('open');
-$('#closeSidebar').onclick = () => $('#sidebar').classList.remove('open');
 
 document.querySelectorAll('.suggestion').forEach(button => {
   button.addEventListener('click', () => sendMessage(button.dataset.prompt));
@@ -1874,33 +2027,45 @@ $('#settingsBtn').onclick = async () => {
 
 $('#refreshUsageBtn')?.addEventListener('click', refreshImageUsage);
 
-function toggleTheme() {
-  document.body.classList.toggle('light');
-  try {
-    localStorage.setItem(
-      'lorenzo-ai-theme',
-      document.body.classList.contains('light') ? 'light' : 'dark'
-    );
-  } catch {}
-  const isLight = document.body.classList.contains('light');
+function applyTheme(mode, persist = true) {
+  const validMode = ['dark', 'light', 'auto'].includes(mode) ? mode : 'dark';
+  const prefersLight = window.matchMedia?.('(prefers-color-scheme: light)').matches === true;
+  const effectiveLight = validMode === 'light' || (validMode === 'auto' && prefersLight);
+  document.body.dataset.theme = validMode;
+  document.body.classList.toggle('light', effectiveLight);
+  if (persist) {
+    try { localStorage.setItem('lorenzo-ai-theme', validMode); } catch {}
+  }
+
+  const labels = {
+    dark: ['Tema scuro attivo', 'Passa al tema chiaro'],
+    light: ['Tema chiaro attivo', 'Usa tema automatico'],
+    auto: ['Tema automatico attivo', 'Passa al tema scuro']
+  };
+  const [statusText, actionText] = labels[validMode];
   const themeStatus = $('#settingsThemeStatus');
-  const themeSettingAction = $('#settingsThemeAction');
-  if (themeStatus) themeStatus.textContent = isLight ? 'Tema chiaro attivo' : 'Tema scuro attivo';
-  if (themeSettingAction) themeSettingAction.textContent = isLight ? 'Usa tema scuro' : 'Usa tema chiaro';
+  const themeAction = $('#settingsThemeAction');
+  if (themeStatus) themeStatus.textContent = statusText;
+  if (themeAction) themeAction.textContent = actionText;
+}
+
+function toggleTheme() {
+  let currentTheme = 'dark';
+  try { currentTheme = localStorage.getItem('lorenzo-ai-theme') || 'dark'; } catch {}
+  const nextTheme = currentTheme === 'dark' ? 'light' : currentTheme === 'light' ? 'auto' : 'dark';
+  applyTheme(nextTheme);
 }
 
 window.toggleTheme = toggleTheme;
+window.applyLorenzoTheme = applyTheme;
 
-try {
-  if (localStorage.getItem('lorenzo-ai-theme') === 'light') {
-    document.body.classList.add('light');
-  }
-} catch {}
-
-const themeStatus = $('#settingsThemeStatus');
-const themeSettingAction = $('#settingsThemeAction');
-if (themeStatus) themeStatus.textContent = document.body.classList.contains('light') ? 'Tema chiaro attivo' : 'Tema scuro attivo';
-if (themeSettingAction) themeSettingAction.textContent = document.body.classList.contains('light') ? 'Usa tema scuro' : 'Usa tema chiaro';
+let savedTheme = 'dark';
+try { savedTheme = localStorage.getItem('lorenzo-ai-theme') || 'dark'; } catch {}
+applyTheme(savedTheme, false);
+const systemThemeQuery = window.matchMedia?.('(prefers-color-scheme: light)');
+systemThemeQuery?.addEventListener?.('change', () => {
+  if (document.body.dataset.theme === 'auto') applyTheme('auto', false);
+});
 
 setupAccountButton();
 

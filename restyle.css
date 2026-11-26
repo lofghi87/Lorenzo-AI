@@ -1,0 +1,296 @@
+/* Lorenzo AI — UX foundation refresh.
+   Keeps the original midnight/blue/lavender brand and avoids third-party marks. */
+:root {
+  --la-surface-shadow: 0 22px 64px rgba(0, 0, 0, .34);
+  --la-menu-radius: 16px;
+  --la-focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent2) 26%, transparent);
+}
+
+.sidebar {
+  width: 280px;
+  transition: width .22s ease, transform .25s ease, background .2s ease;
+}
+
+.desktop-sidebar-btn {
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  margin-right: 8px;
+  color: var(--muted);
+}
+.desktop-sidebar-btn svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.desktop-sidebar-btn:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.sidebar-backdrop {
+  display: block;
+  position: fixed;
+  z-index: 29;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(3, 5, 12, .58);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: la-fade-in .16s ease both;
+}
+.sidebar-backdrop[hidden],
+.profile-menu[hidden],
+.desktop-sidebar-btn[hidden],
+.stop-btn[hidden] {
+  display: none !important;
+}
+
+body.sidebar-collapsed .sidebar {
+  width: 78px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+body.sidebar-collapsed .sidebar .brand {
+  justify-content: center;
+  padding: 0 0 24px;
+}
+body.sidebar-collapsed .sidebar .brand > span,
+body.sidebar-collapsed .sidebar .close-sidebar,
+body.sidebar-collapsed .sidebar .history-heading,
+body.sidebar-collapsed .sidebar .history-toolbar,
+body.sidebar-collapsed .sidebar #history,
+body.sidebar-collapsed .sidebar #historyEmpty,
+body.sidebar-collapsed .sidebar .side-bottom > div:nth-child(2) {
+  display: none !important;
+}
+body.sidebar-collapsed .sidebar .brand-mark {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+}
+body.sidebar-collapsed .sidebar .new-chat {
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px;
+}
+body.sidebar-collapsed .sidebar .new-chat-label {
+  display: none;
+}
+body.sidebar-collapsed .sidebar .new-chat svg {
+  width: 21px;
+  height: 21px;
+  margin: 0;
+}
+body.sidebar-collapsed .sidebar .side-bottom {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+body.sidebar-collapsed .sidebar .side-bottom .status-dot {
+  display: none;
+}
+
+.top-actions {
+  position: relative;
+}
+#accountBtn,
+.profile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  min-height: 38px;
+  width: auto;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--accent2) 42%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, transform .18s ease;
+}
+#accountBtn:hover,
+#accountBtn[aria-expanded="true"] {
+  border-color: var(--accent2);
+  background: color-mix(in srgb, var(--accent) 24%, var(--panel));
+}
+#accountBtn:focus-visible,
+.profile-menu button:focus-visible,
+.stop-btn:focus-visible,
+.desktop-sidebar-btn:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 3px;
+  box-shadow: var(--la-focus-ring);
+}
+
+.profile-menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 11px);
+  right: 0;
+  display: grid;
+  gap: 4px;
+  width: min(286px, calc(100vw - 24px));
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--la-menu-radius);
+  background: color-mix(in srgb, var(--panel) 97%, transparent);
+  color: var(--text);
+  box-shadow: var(--la-surface-shadow);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  transform-origin: top right;
+  animation: la-menu-in .16s ease both;
+}
+.profile-menu-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 9px 8px 11px;
+}
+.profile-menu-avatar {
+  display: grid;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent2) 55%, var(--line));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--accent) 19%, var(--panel2));
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 750;
+}
+.profile-menu-identity {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.profile-menu-identity b {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-menu-identity small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-menu-divider {
+  height: 1px;
+  margin: 0 5px 3px;
+  background: var(--line);
+}
+.profile-menu button {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.profile-menu button:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.profile-menu button svg {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--muted);
+}
+.profile-menu button span {
+  min-width: 0;
+}
+
+.stop-btn {
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(245, 115, 130, .38);
+  border-radius: 11px;
+  background: rgba(213, 76, 100, .16);
+  color: #ff9eae;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease;
+}
+.stop-btn:hover:not(:disabled) {
+  border-color: rgba(245, 115, 130, .7);
+  background: rgba(213, 76, 100, .25);
+}
+.stop-btn:disabled {
+  opacity: .68;
+  cursor: wait;
+}
+.stop-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: currentColor;
+}
+
+@keyframes la-menu-in {
+  from { opacity: 0; transform: translateY(-5px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes la-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 760px) {
+  .desktop-sidebar-btn { display: none !important; }
+  .sidebar-backdrop { z-index: 29; }
+  .sidebar { z-index: 30; }
+  body.sidebar-collapsed .sidebar {
+    width: min(280px, 86vw);
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+  body.sidebar-open { overscroll-behavior: none; }
+  .profile-menu {
+    position: fixed;
+    top: calc(56px + env(safe-area-inset-top) + 8px);
+    right: max(10px, env(safe-area-inset-right));
+    width: min(286px, calc(100vw - 20px));
+  }
+  .stop-btn { width: 36px; height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .profile-menu, .sidebar-backdrop, .stop-btn {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Quando si genera una risposta, mostra solo il comando di interruzione. */
+#sendBtn[hidden] { display: none !important; }
