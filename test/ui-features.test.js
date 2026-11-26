@@ -100,3 +100,26 @@ test('latest response can be continued through the streaming chat API', () => {
   assert.ok(app.includes('message.content = original'));
   assert.ok(app.includes('addition.trim()'));
 });
+
+
+test('conversation archive filter and per-chat archive action are wired', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(app, /function archivedStorageKey\(/);
+  assert.match(app, /function toggleChatArchive\(/);
+  assert.match(app, /data-history-action="archive"/);
+  assert.match(app, /showingArchived \? archived\.has\(chat\.id\)/);
+  assert.match(html, /id="archivedFilterBtn"/);
+});
+
+test('account data settings export loaded conversations as JSON', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(app, /function exportAllChats\(/);
+  assert.match(app, /lorenzo-ai-export-v1/);
+  assert.match(html, /id="exportAllChatsBtn"/);
+});

@@ -307,3 +307,8 @@ body.sidebar-collapsed .sidebar .side-bottom .status-dot {
 .message-actions .message-action-btn { min-height:30px; }
 .message-feedback svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
 @media (max-width:600px) { .message-actions .message-action-btn { min-height:34px; padding-inline:8px; } .message-feedback { gap:3px; } }
+
+/* Conversation archive and export controls */
+.history-toolbar { flex-wrap: wrap; }
+.archived-filter[aria-pressed="true"] { border-color: color-mix(in srgb, var(--accent2) 58%, var(--line)); background: color-mix(in srgb, var(--accent) 17%, transparent); color: var(--text); }
+#exportAllChatsBtn { width:100%; margin-top:12px; }
