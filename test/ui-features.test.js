@@ -45,6 +45,51 @@ test('browser application scripts parse successfully', () => {
   execFileSync(process.execPath, ['--check', path.join(__dirname, '..', 'app.js')]);
 });
 
+test('restyle adds accessible navigation, profile controls and response cancellation', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.resolve(__dirname, '..');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'restyle.css'), 'utf8');
+  assert.match(html, /id="desktopSidebarBtn"/);
+  assert.match(html, /id="sidebarBackdrop"/);
+  assert.match(html, /id="profileMenu"/);
+  assert.match(html, /id="stopBtn"/);
+  assert.match(css, /#sendBtn\[hidden\]/);
+  assert.match(app, /sendBtn\.hidden = Boolean\(activeRequestController\)/);
+  assert.match(app, /new AbortController\(\)/);
+  assert.match(app, /signal: requestController\.signal/);
+  assert.match(app, /Interruzione della generazione/);
+  assert.match(app, /function closeSidebar\(\)/);
+  assert.match(app, /function toggleProfileMenu\(\)/);
+  assert.match(css, /body\.sidebar-collapsed \.sidebar/);
+  assert.match(css, /\.profile-menu/);
+});
+
+test('theme preference supports dark, light and system automatic mode', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  assert.match(app, /\['dark', 'light', 'auto'\]/);
+  assert.match(app, /prefers-color-scheme: light/);
+  assert.match(app, /applyTheme\(nextTheme\)/);
+});
+
+
+test('latest plain-text user message can be edited and response feedback is persisted', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(app, /function canEditUserMessage\(/);
+  assert.match(app, /function setEditingMessage\(/);
+  assert.match(app, /c\.messages\.splice\(editRef\.messageIndex \+ 1\)/);
+  assert.match(app, /data-feedback/);
+  assert.match(app, /feedback: m\.feedback/);
+  assert.match(html, /id="editMessageBar"/);
+  assert.match(html, /id="cancelEditMessage"/);
+});
 
 test('latest response can be continued through the streaming chat API', () => {
   const fs = require('node:fs');
