@@ -32,6 +32,7 @@
   <link rel="stylesheet" href="/polish.css">
   <link rel="stylesheet" href="/app-pwa.css">
   <link rel="stylesheet" href="/premium.css">
+  <link rel="stylesheet" href="/restyle.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/katex.min.css">
 
   <style>
@@ -116,8 +117,13 @@
     </div>
   </aside>
 
+  <button type="button" id="sidebarBackdrop" class="sidebar-backdrop" aria-label="Chiudi menu" hidden></button>
+
   <main class="main">
     <header class="topbar">
+      <button type="button" class="icon-btn desktop-sidebar-btn" id="desktopSidebarBtn" aria-label="Comprimi barra laterale" aria-expanded="true" title="Comprimi barra laterale">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M14 9h4M14 12h4M14 15h4"/></svg>
+      </button>
       <button
         class="icon-btn menu-btn"
         id="menuBtn"
@@ -138,6 +144,24 @@
           title="Profilo"
           aria-label="Profilo"
         >L</button>
+        <div class="profile-menu" id="profileMenu" role="menu" aria-label="Menu account" hidden>
+          <div class="profile-menu-heading">
+            <span class="profile-menu-avatar" id="profileMenuAvatar" aria-hidden="true">L</span>
+            <span class="profile-menu-identity">
+              <b id="profileMenuName">Account Lorenzo AI</b>
+              <small id="profileMenuEmail">Non hai effettuato l'accesso</small>
+            </span>
+          </div>
+          <div class="profile-menu-divider"></div>
+          <button type="button" id="profileSettingsBtn" role="menuitem">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1a1.8 1.8 0 0 1-2.5 2.5l-.1-.1a1.8 1.8 0 0 0-3 .9v.2a1.8 1.8 0 0 1-3.6 0v-.2a1.8 1.8 0 0 0-3-.9l-.1.1a1.8 1.8 0 0 1-2.5-2.5l.1-.1a1.8 1.8 0 0 0-.9-3H3.7a1.8 1.8 0 0 1 0-3.6h.2a1.8 1.8 0 0 0 .9-3l-.1-.1a1.8 1.8 0 0 1 2.5-2.5l.1.1a1.8 1.8 0 0 0 3-.9v-.2a1.8 1.8 0 0 1 3.6 0v.2a1.8 1.8 0 0 0 3 .9l-.1-.1a1.8 1.8 0 0 1 2.5 2.5l-.1.1a1.8 1.8 0 0 0 .9 3h.2a1.8 1.8 0 0 1 0 3.6h-.2a1.8 1.8 0 0 0-.9 3z"/></svg>
+            <span>Impostazioni</span>
+          </button>
+          <button type="button" id="profileAuthBtn" role="menuitem">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3M21 4v16"/></svg>
+            <span>Accedi</span>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -270,6 +294,9 @@
 
           </div>
 
+          <button type="button" class="stop-btn" id="stopBtn" aria-label="Interrompi generazione" title="Interrompi generazione" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          </button>
           <button
             class="send-btn"
             id="sendBtn"
