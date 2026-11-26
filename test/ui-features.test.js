@@ -129,7 +129,7 @@ test('conversation sharing uses native share when available and clipboard fallba
   const fs = require('node:fs');
   const app = fs.readFileSync(require('node:path').join(__dirname, '..', 'app.js'), 'utf8');
   assert.match(app, /async function shareChat\(/);
-  assert.match(app, /typeof navigator\\.share === 'function'/);
+  assert.ok(app.includes("typeof navigator.share === 'function'"));
   assert.match(app, /copyText\(text\)/);
   assert.match(app, /data-history-action="share"/);
 });
