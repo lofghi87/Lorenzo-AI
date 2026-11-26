@@ -32,6 +32,7 @@ let chats = [];
 let activeId = null;
 let busy = false;
 let activeRequestController = null;
+let editingMessageRef = null;
 let toastTimer;
 let currentUser = null;
 let authReady = false;
@@ -328,6 +329,7 @@ document.addEventListener('pointerdown', event => {
 });
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') {
+    if (editingMessageRef) cancelEditingMessage();
     closeHistoryContextMenu();
     closeProfileMenu();
     if (window.matchMedia('(max-width: 760px)').matches) closeSidebar();
@@ -459,6 +461,7 @@ function newChat() {
   messagesEl.replaceChildren();
   setWelcomeVisible(true);
   promptEl.value = '';
+  cancelEditingMessage();
   resetImageMode();
   clearSelectedAttachments();
   renderHistory();
@@ -475,7 +478,7 @@ function openChat(chatId) {
   messagesEl.replaceChildren();
   c.messages.forEach((m, index) => {
     const bubble = addMessage(m.role, m.content, false, m.attachmentNames);
-    if (m.role === 'assistant' && String(m.content || '').trim()) {
+    if (String(m.content || '').trim()) {
       addMessageActions(bubble, c.id, index);
     }
     if (m.role === 'assistant' && typeof m.imagePath === 'string') {
@@ -596,16 +599,64 @@ function clearStaleRegenerateActions() {
   messagesEl.querySelectorAll('[data-message-action="regenerate"]').forEach(button => button.remove());
 }
 
+function canEditUserMessage(chatId, messageIndex) {
+  const chat = chats.find(item => item.id === chatId);
+  const message = chat?.messages?.[messageIndex];
+  const response = chat?.messages?.[messageIndex + 1];
+  return Boolean(chat && messageIndex === chat.messages.length - 2 &&
+    message?.role === 'user' && response?.role === 'assistant' &&
+    String(message.content || '').trim() &&
+    !(Array.isArray(message.attachmentNames) && message.attachmentNames.length) &&
+    !String(message.content || '').startsWith('Crea un’immagine:'));
+}
+
+function setEditingMessage(chatId, messageIndex) {
+  const chat = chats.find(item => item.id === chatId);
+  const message = chat?.messages?.[messageIndex];
+  if (!canEditUserMessage(chatId, messageIndex) || !message) return;
+  editingMessageRef = { chatId, messageIndex };
+  promptEl.value = message.content || '';
+  const bar = $('#editMessageBar');
+  if (bar) bar.hidden = false;
+  resizeInput();
+  promptEl.focus();
+  promptEl.setSelectionRange(promptEl.value.length, promptEl.value.length);
+  showToast('Modifica il messaggio e invialo per aggiornare la risposta.');
+}
+
+function cancelEditingMessage() {
+  editingMessageRef = null;
+  const bar = $('#editMessageBar');
+  if (bar) bar.hidden = true;
+  if (promptEl) promptEl.value = '';
+  resizeInput();
+}
+
 function addMessageActions(bubble, chatId, messageIndex) {
   const wrap = bubble?.closest('.message');
   const chat = chats.find(item => item.id === chatId);
   const message = chat?.messages?.[messageIndex];
 
-  if (!wrap || wrap.querySelector('.message-actions') ||
-      wrap.classList.contains('user') || !message) return;
+  if (!wrap || wrap.querySelector('.message-actions') || !message) return;
 
   const actions = document.createElement('div');
   actions.className = 'message-actions';
+
+  if (message.role === 'user') {
+    if (!canEditUserMessage(chatId, messageIndex)) return;
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'message-action-btn';
+    editButton.dataset.messageAction = 'edit';
+    editButton.setAttribute('aria-label', 'Modifica messaggio');
+    editButton.title = 'Modifica messaggio';
+    editButton.innerHTML = '<span aria-hidden="true">✎</span><span>Modifica</span>';
+    editButton.addEventListener('click', () => setEditingMessage(chatId, messageIndex));
+    actions.append(editButton);
+    wrap.append(actions);
+    return;
+  }
+  if (message.role !== 'assistant') return;
 
   const copyButton = document.createElement('button');
   copyButton.type = 'button';
@@ -629,6 +680,45 @@ function addMessageActions(bubble, chatId, messageIndex) {
     }
   });
   actions.append(copyButton);
+
+  const feedbackGroup = document.createElement('span');
+  feedbackGroup.className = 'message-feedback';
+  [['up', 'Utile', 'Pollice in su'], ['down', 'Non utile', 'Pollice in giù']].forEach(([value, label, aria]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'message-action-btn feedback-btn' + (message.feedback === value ? ' selected' : '');
+    button.dataset.feedback = value;
+    button.setAttribute('aria-label', aria);
+    button.title = aria;
+    button.setAttribute('aria-pressed', String(message.feedback === value));
+    button.innerHTML = value === 'up'
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v10H4V10h3Zm0 0 5-7c2 0 3 2 2 4l-1 3h5a2 2 0 0 1 2 2l-2 6a2 2 0 0 1-2 2H7"/></svg><span>Utile</span>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14V4H4v10h3Zm0 0 5 7c2 0 3-2 2-4l-1-3h5a2 2 0 0 0 2-2l-2-6a2 2 0 0 0-2-2H7"/></svg><span>Non utile</span>';
+    button.addEventListener('click', async () => {
+      message.feedback = message.feedback === value ? null : value;
+      feedbackGroup.querySelectorAll('[data-feedback]').forEach(item => {
+        const selected = item.dataset.feedback === message.feedback;
+        item.classList.toggle('selected', selected);
+        item.setAttribute('aria-pressed', String(selected));
+      });
+      await saveChat(chat);
+      showToast(message.feedback ? 'Feedback salvato.' : 'Feedback rimosso.');
+    });
+    feedbackGroup.append(button);
+  });
+  actions.append(feedbackGroup);
+
+  if (canContinueResponse(chatId, messageIndex)) {
+    const continueButton = document.createElement('button');
+    continueButton.type = 'button';
+    continueButton.className = 'message-action-btn';
+    continueButton.dataset.messageAction = 'continue';
+    continueButton.setAttribute('aria-label', 'Continua risposta');
+    continueButton.title = 'Continua risposta';
+    continueButton.innerHTML = '<span aria-hidden="true">↳</span><span>Continua</span>';
+    continueButton.addEventListener('click', () => continueResponse(chatId, messageIndex));
+    actions.append(continueButton);
+  }
 
   if (canRegenerateResponse(chatId, messageIndex)) {
     const regenerateButton = document.createElement('button');
@@ -913,6 +1003,9 @@ async function saveChat(chat) {
       : {}),
     ...(typeof m.imagePath === 'string'
       ? { imagePath: m.imagePath }
+      : {}),
+    ...(m.feedback === 'up' || m.feedback === 'down'
+      ? { feedback: m.feedback }
       : {})
   }));
 
@@ -1353,6 +1446,86 @@ async function generateImage(promptText) {
   scrollBottom();
 }
 
+function canContinueResponse(chatId, messageIndex) {
+  const chat = chats.find(item => item.id === chatId);
+  const message = chat?.messages?.[messageIndex];
+  const previous = chat?.messages?.[messageIndex - 1];
+  return Boolean(chat && messageIndex === chat.messages.length - 1 &&
+    message?.role === 'assistant' && String(message.content || '').trim() &&
+    previous?.role === 'user' &&
+    !String(message.content || '').startsWith('Immagine generata per:'));
+}
+
+async function continueResponse(chatId, messageIndex) {
+  if (busy || !authReady) return;
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat || !canContinueResponse(chatId, messageIndex)) return;
+
+  const message = chat.messages[messageIndex];
+  const assistantMessages = messagesEl.querySelectorAll('.message.assistant');
+  const bubble = assistantMessages[assistantMessages.length - 1]?.querySelector('.bubble');
+  if (!bubble) return;
+
+  busy = true;
+  resizeInput();
+  const original = String(message.content || '');
+  let addition = '';
+
+  try {
+    const apiMessages = chat.messages.slice(-40).map(item => ({
+      role: item.role,
+      content: item.content || ''
+    }));
+    apiMessages.push({
+      role: 'user',
+      content: 'Continua la risposta precedente dal punto in cui si è interrotta o approfondisci la parte finale. Non ripetere quanto hai già scritto.'
+    });
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentUser) {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error || !data.session?.access_token) throw new Error('Sessione scaduta. Accedi nuovamente.');
+      headers.Authorization = 'Bearer ' + data.session.access_token;
+    }
+
+    const controller = new AbortController();
+    activeRequestController = controller;
+    resizeInput();
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ messages: apiMessages, stream: true }),
+      signal: controller.signal
+    });
+    addition = await readStreamingReply(response, partial => {
+      const area = $('#chatArea');
+      const keepAtBottom = area && area.scrollHeight - area.scrollTop - area.clientHeight < 140;
+      renderMarkdown(bubble, original + (partial ? '\n\n' + partial : ''), false);
+      if (keepAtBottom) scrollBottom();
+    }, controller.signal);
+    activeRequestController = null;
+    if (addition.trim()) {
+      message.content = original + '\n\n' + addition.trim();
+      renderMarkdown(bubble, message.content);
+      await saveChat(chat);
+    } else {
+      renderMarkdown(bubble, original);
+    }
+  } catch (error) {
+    activeRequestController = null;
+    console.error('Errore continuazione risposta:', error);
+    renderMarkdown(bubble, original);
+    showToast(error?.name === 'AbortError'
+      ? 'Continuazione interrotta.'
+      : 'Non sono riuscito a continuare la risposta. ' + (error.message || 'Riprova.'));
+  } finally {
+    busy = false;
+    resizeInput();
+    renderHistory();
+    scrollBottom();
+  }
+}
+
 async function regenerateResponse(chatId, messageIndex) {
   if (busy || !authReady) return;
 
@@ -1485,21 +1658,44 @@ async function sendMessage(text) {
     activeId = c.id;
   }
 
-  const userMessage = {
-    role: 'user',
-    content: text,
-    attachmentNames: attachments.map(file => file.name)
-  };
+  let userMessage;
+  if (editingMessageRef) {
+    const editRef = editingMessageRef;
+    const targetChat = chats.find(item => item.id === editRef.chatId);
+    if (!targetChat || targetChat.id !== c.id || !canEditUserMessage(editRef.chatId, editRef.messageIndex)) {
+      cancelEditingMessage();
+      showToast('Questo messaggio non è più modificabile.');
+      return;
+    }
+    if (attachments.length) {
+      showToast('Rimuovi gli allegati prima di modificare il messaggio.');
+      return;
+    }
+    c.messages.splice(editRef.messageIndex + 1);
+    userMessage = c.messages[editRef.messageIndex];
+    userMessage.content = text;
+    delete userMessage.feedback;
+    editingMessageRef = null;
+    const editBar = $('#editMessageBar');
+    if (editBar) editBar.hidden = true;
+  } else {
+    userMessage = {
+      role: 'user',
+      content: text,
+      attachmentNames: attachments.map(file => file.name)
+    };
+    c.messages.push(userMessage);
+  }
 
   clearStaleRegenerateActions();
-  c.messages.push(userMessage);
   setWelcomeVisible(false);
-  addMessage(
+  const userBubble = addMessage(
     'user',
     text || (attachments.length ? 'Analizza gli allegati.' : ''),
     true,
     userMessage.attachmentNames
   );
+  addMessageActions(userBubble, c.id, c.messages.indexOf(userMessage));
 
   renderHistory();
   promptEl.value = '';
@@ -1605,6 +1801,7 @@ async function sendMessage(text) {
     renderAssistantText(thinking, reply, true);
     c.messages.push({ role: 'assistant', content: reply });
     addMessageActions(thinking, c.id, c.messages.length - 1);
+    addMessageActions(userBubble, c.id, c.messages.length - 2);
   } else {
     thinking.closest('.message')?.remove();
   }
@@ -1743,6 +1940,7 @@ if (imageModeBtn) {
 }
 
 $('#newChat').onclick = newChat;
+$('#cancelEditMessage')?.addEventListener('click', cancelEditingMessage);
 
 document.querySelectorAll('.suggestion').forEach(button => {
   button.addEventListener('click', () => sendMessage(button.dataset.prompt));
