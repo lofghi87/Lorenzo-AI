@@ -31,8 +31,6 @@ const ALLOWED_TYPES = new Set([
 let chats = [];
 let activeId = null;
 let busy = false;
-let activeRequestController = null;
-let editingMessageRef = null;
 let toastTimer;
 let currentUser = null;
 let authReady = false;
@@ -328,12 +326,7 @@ document.addEventListener('pointerdown', event => {
   if (menu && !menu.hidden && !menu.contains(event.target)) closeHistoryContextMenu();
 });
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') {
-    if (editingMessageRef) cancelEditingMessage();
-    closeHistoryContextMenu();
-    closeProfileMenu();
-    if (window.matchMedia('(max-width: 760px)').matches) closeSidebar();
-  }
+  if (event.key === 'Escape') closeHistoryContextMenu();
 });
 window.addEventListener('resize', closeHistoryContextMenu);
 window.addEventListener('scroll', closeHistoryContextMenu, true);
@@ -455,13 +448,10 @@ function clearSelectedAttachments() {
 }
 
 function newChat() {
-  closeSidebar();
-  closeProfileMenu();
   activeId = null;
   messagesEl.replaceChildren();
   setWelcomeVisible(true);
   promptEl.value = '';
-  cancelEditingMessage();
   resetImageMode();
   clearSelectedAttachments();
   renderHistory();
@@ -478,7 +468,7 @@ function openChat(chatId) {
   messagesEl.replaceChildren();
   c.messages.forEach((m, index) => {
     const bubble = addMessage(m.role, m.content, false, m.attachmentNames);
-    if (String(m.content || '').trim()) {
+    if (m.role === 'assistant' && String(m.content || '').trim()) {
       addMessageActions(bubble, c.id, index);
     }
     if (m.role === 'assistant' && typeof m.imagePath === 'string') {
@@ -490,8 +480,7 @@ function openChat(chatId) {
   resetImageMode();
   clearSelectedAttachments();
   renderHistory();
-  closeSidebar();
-  closeProfileMenu();
+  $('#sidebar')?.classList.remove('open');
   scrollBottom();
 }
 
@@ -599,64 +588,16 @@ function clearStaleRegenerateActions() {
   messagesEl.querySelectorAll('[data-message-action="regenerate"]').forEach(button => button.remove());
 }
 
-function canEditUserMessage(chatId, messageIndex) {
-  const chat = chats.find(item => item.id === chatId);
-  const message = chat?.messages?.[messageIndex];
-  const response = chat?.messages?.[messageIndex + 1];
-  return Boolean(chat && messageIndex === chat.messages.length - 2 &&
-    message?.role === 'user' && response?.role === 'assistant' &&
-    String(message.content || '').trim() &&
-    !(Array.isArray(message.attachmentNames) && message.attachmentNames.length) &&
-    !String(message.content || '').startsWith('Crea un’immagine:'));
-}
-
-function setEditingMessage(chatId, messageIndex) {
-  const chat = chats.find(item => item.id === chatId);
-  const message = chat?.messages?.[messageIndex];
-  if (!canEditUserMessage(chatId, messageIndex) || !message) return;
-  editingMessageRef = { chatId, messageIndex };
-  promptEl.value = message.content || '';
-  const bar = $('#editMessageBar');
-  if (bar) bar.hidden = false;
-  resizeInput();
-  promptEl.focus();
-  promptEl.setSelectionRange(promptEl.value.length, promptEl.value.length);
-  showToast('Modifica il messaggio e invialo per aggiornare la risposta.');
-}
-
-function cancelEditingMessage() {
-  editingMessageRef = null;
-  const bar = $('#editMessageBar');
-  if (bar) bar.hidden = true;
-  if (promptEl) promptEl.value = '';
-  resizeInput();
-}
-
 function addMessageActions(bubble, chatId, messageIndex) {
   const wrap = bubble?.closest('.message');
   const chat = chats.find(item => item.id === chatId);
   const message = chat?.messages?.[messageIndex];
 
-  if (!wrap || wrap.querySelector('.message-actions') || !message) return;
+  if (!wrap || wrap.querySelector('.message-actions') ||
+      wrap.classList.contains('user') || !message) return;
 
   const actions = document.createElement('div');
   actions.className = 'message-actions';
-
-  if (message.role === 'user') {
-    if (!canEditUserMessage(chatId, messageIndex)) return;
-    const editButton = document.createElement('button');
-    editButton.type = 'button';
-    editButton.className = 'message-action-btn';
-    editButton.dataset.messageAction = 'edit';
-    editButton.setAttribute('aria-label', 'Modifica messaggio');
-    editButton.title = 'Modifica messaggio';
-    editButton.innerHTML = '<span aria-hidden="true">✎</span><span>Modifica</span>';
-    editButton.addEventListener('click', () => setEditingMessage(chatId, messageIndex));
-    actions.append(editButton);
-    wrap.append(actions);
-    return;
-  }
-  if (message.role !== 'assistant') return;
 
   const copyButton = document.createElement('button');
   copyButton.type = 'button';
@@ -680,45 +621,6 @@ function addMessageActions(bubble, chatId, messageIndex) {
     }
   });
   actions.append(copyButton);
-
-  const feedbackGroup = document.createElement('span');
-  feedbackGroup.className = 'message-feedback';
-  [['up', 'Utile', 'Pollice in su'], ['down', 'Non utile', 'Pollice in giù']].forEach(([value, label, aria]) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'message-action-btn feedback-btn' + (message.feedback === value ? ' selected' : '');
-    button.dataset.feedback = value;
-    button.setAttribute('aria-label', aria);
-    button.title = aria;
-    button.setAttribute('aria-pressed', String(message.feedback === value));
-    button.innerHTML = value === 'up'
-      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v10H4V10h3Zm0 0 5-7c2 0 3 2 2 4l-1 3h5a2 2 0 0 1 2 2l-2 6a2 2 0 0 1-2 2H7"/></svg><span>Utile</span>'
-      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14V4H4v10h3Zm0 0 5 7c2 0 3-2 2-4l-1-3h5a2 2 0 0 0 2-2l-2-6a2 2 0 0 0-2-2H7"/></svg><span>Non utile</span>';
-    button.addEventListener('click', async () => {
-      message.feedback = message.feedback === value ? null : value;
-      feedbackGroup.querySelectorAll('[data-feedback]').forEach(item => {
-        const selected = item.dataset.feedback === message.feedback;
-        item.classList.toggle('selected', selected);
-        item.setAttribute('aria-pressed', String(selected));
-      });
-      await saveChat(chat);
-      showToast(message.feedback ? 'Feedback salvato.' : 'Feedback rimosso.');
-    });
-    feedbackGroup.append(button);
-  });
-  actions.append(feedbackGroup);
-
-  if (canContinueResponse(chatId, messageIndex)) {
-    const continueButton = document.createElement('button');
-    continueButton.type = 'button';
-    continueButton.className = 'message-action-btn';
-    continueButton.dataset.messageAction = 'continue';
-    continueButton.setAttribute('aria-label', 'Continua risposta');
-    continueButton.title = 'Continua risposta';
-    continueButton.innerHTML = '<span aria-hidden="true">↳</span><span>Continua</span>';
-    continueButton.addEventListener('click', () => continueResponse(chatId, messageIndex));
-    actions.append(continueButton);
-  }
 
   if (canRegenerateResponse(chatId, messageIndex)) {
     const regenerateButton = document.createElement('button');
@@ -754,7 +656,7 @@ async function copyText(text) {
   if (!copied) throw new Error('Copia non riuscita.');
 }
 
-async function readStreamingReply(response, onUpdate, signal = null) {
+async function readStreamingReply(response, onUpdate) {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'Errore del servizio AI.');
@@ -833,12 +735,6 @@ async function readStreamingReply(response, onUpdate, signal = null) {
     }
     buffer += decoder.decode();
     consumeEvents(true);
-  } catch (error) {
-    if (signal?.aborted || error?.name === 'AbortError') {
-      try { await reader.cancel(); } catch {}
-      return answer.trim();
-    }
-    throw error;
   } finally {
     try { reader.releaseLock(); } catch {}
   }
@@ -856,13 +752,6 @@ function scrollBottom() {
 
 function resizeInput() {
   if (!promptEl || !sendBtn) return;
-
-  const stopButton = $('#stopBtn');
-  if (stopButton) {
-    stopButton.hidden = !activeRequestController;
-    stopButton.disabled = !activeRequestController || activeRequestController.signal.aborted;
-  }
-  sendBtn.hidden = Boolean(activeRequestController);
 
   // Misura l'altezza effettiva consentita dal CSS (più bassa sui telefoni)
   // ed evita che la textarea continui a crescere oltre il limite.
@@ -917,46 +806,14 @@ function setThinkingState(el, label) {
   el.append(state);
 }
 
-function closeProfileMenu() {
-  const menu = $('#profileMenu');
-  const button = $('#accountBtn');
-  if (menu) menu.hidden = true;
-  button?.setAttribute('aria-expanded', 'false');
-}
-
-function toggleProfileMenu() {
-  const menu = $('#profileMenu');
-  const button = $('#accountBtn');
-  if (!menu || !button) return;
-  const willOpen = menu.hidden;
-  menu.hidden = !willOpen;
-  button.setAttribute('aria-expanded', String(willOpen));
-}
-
 function setupAccountButton() {
   const profile = $('.profile');
   if (!profile) return;
 
   profile.id = 'accountBtn';
-  profile.type = 'button';
-  profile.setAttribute('aria-haspopup', 'menu');
-  profile.setAttribute('aria-expanded', 'false');
-  profile.onclick = toggleProfileMenu;
-
-  $('#profileSettingsBtn')?.addEventListener('click', () => {
-    closeProfileMenu();
-    $('#settingsBtn')?.click();
-  });
-  $('#profileAuthBtn')?.addEventListener('click', async () => {
-    closeProfileMenu();
-    if (!currentUser) {
-      window.location.href = '/login.html';
-      return;
-    }
-    const { error } = await supabaseClient.auth.signOut();
-    if (error) showToast(error.message);
-    else showToast('Disconnessione completata.');
-  });
+  profile.style.cssText =
+    'width:auto;min-width:76px;padding:0 16px;border-radius:24px;' +
+    'white-space:nowrap;font-size:14px;cursor:pointer';
 
   updateAccountButton();
 }
@@ -965,26 +822,18 @@ function updateAccountButton() {
   const btn = $('#accountBtn');
   if (!btn) return;
 
-  const email = currentUser?.email || '';
-  const initials = email.split('@')[0].split(/[._\s-]+/)
-    .filter(Boolean).slice(0, 2).map(part => part[0].toUpperCase()).join('') || 'L';
-  btn.textContent = currentUser ? initials : 'Accedi';
-  btn.title = currentUser ? (email || 'Apri menu account') : 'Accedi o crea un account';
-  btn.setAttribute('aria-label', currentUser ? 'Menu account' : 'Accedi o crea un account');
-
-  const avatar = $('#profileMenuAvatar');
-  const name = $('#profileMenuName');
-  const menuEmail = $('#profileMenuEmail');
-  const authAction = $('#profileAuthBtn');
-  if (avatar) avatar.textContent = initials;
-  if (name) name.textContent = currentUser ? 'Account Lorenzo AI' : 'Benvenuto';
-  if (menuEmail) menuEmail.textContent = email || 'Non hai effettuato l’accesso';
-  if (authAction) {
-    const label = authAction.querySelector('span');
-    if (label) label.textContent = currentUser ? 'Esci dall’account' : 'Accedi o crea un account';
-    authAction.setAttribute('aria-label', currentUser ? 'Esci dall’account' : 'Accedi o crea un account');
+  if (currentUser) {
+    btn.textContent = 'Esci';
+    btn.title = currentUser.email || 'Esci dal tuo account';
+    btn.onclick = async () => {
+      const { error } = await supabaseClient.auth.signOut();
+      if (error) showToast(error.message);
+    };
+  } else {
+    btn.textContent = 'Accedi';
+    btn.title = 'Accedi o crea un account';
+    btn.onclick = () => { window.location.href = '/login.html'; };
   }
-  closeProfileMenu();
 }
 
 async function saveChat(chat) {
@@ -1003,9 +852,6 @@ async function saveChat(chat) {
       : {}),
     ...(typeof m.imagePath === 'string'
       ? { imagePath: m.imagePath }
-      : {}),
-    ...(m.feedback === 'up' || m.feedback === 'down'
-      ? { feedback: m.feedback }
       : {})
   }));
 
@@ -1446,89 +1292,6 @@ async function generateImage(promptText) {
   scrollBottom();
 }
 
-function canContinueResponse(chatId, messageIndex) {
-  const chat = chats.find(item => item.id === chatId);
-  const message = chat?.messages?.[messageIndex];
-  const previous = chat?.messages?.[messageIndex - 1];
-  return Boolean(chat && messageIndex === chat.messages.length - 1 &&
-    message?.role === 'assistant' && String(message.content || '').trim() &&
-    previous?.role === 'user' &&
-    !String(message.content || '').startsWith('Immagine generata per:'));
-}
-
-async function continueResponse(chatId, messageIndex) {
-  if (busy || !authReady) return;
-  const chat = chats.find(item => item.id === chatId);
-  if (!chat || !canContinueResponse(chatId, messageIndex)) return;
-
-  const message = chat.messages[messageIndex];
-  const bubbleWrap = messagesEl.querySelectorAll('.message.assistant');
-  const bubble = bubbleWrap[bubbleWrap.length - 1]?.querySelector('.bubble');
-  if (!bubble) return;
-
-  busy = true;
-  resizeInput();
-  const original = String(message.content || '');
-  let addition = '';
-  const status = document.createElement('span');
-  status.className = 'thinking-state';
-  status.textContent = 'Continuo la risposta';
-  bubble.append(document.createElement('br'), status);
-
-  try {
-    const apiMessages = chat.messages.slice(-40).map(item => ({
-      role: item.role,
-      content: item.content || ''
-    }));
-    apiMessages.push({
-      role: 'user',
-      content: 'Continua la risposta precedente dal punto in cui si è interrotta o approfondisci la parte finale. Non ripetere quanto hai già scritto.'
-    });
-
-    const headers = { 'Content-Type': 'application/json' };
-    if (currentUser) {
-      const { data, error } = await supabaseClient.auth.getSession();
-      if (error || !data.session?.access_token) throw new Error('Sessione scaduta. Accedi nuovamente.');
-      headers.Authorization = 'Bearer ' + data.session.access_token;
-    }
-
-    const controller = new AbortController();
-    activeRequestController = controller;
-    resizeInput();
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ messages: apiMessages, stream: true }),
-      signal: controller.signal
-    });
-    addition = await readStreamingReply(response, partial => {
-      const area = $('#chatArea');
-      const keepAtBottom = area && area.scrollHeight - area.scrollTop - area.clientHeight < 140;
-      renderMarkdown(bubble, original + (partial ? '\n\n' + partial : ''), false);
-      if (keepAtBottom) scrollBottom();
-    }, controller.signal);
-    activeRequestController = null;
-    if (addition.trim()) {
-      message.content = original + '\n\n' + addition.trim();
-      renderMarkdown(bubble, message.content);
-      await saveChat(chat);
-    }
-  } catch (error) {
-    activeRequestController = null;
-    console.error('Errore continuazione risposta:', error);
-    renderMarkdown(bubble, original);
-    showToast(error?.name === 'AbortError'
-      ? 'Continuazione interrotta.'
-      : 'Non sono riuscito a continuare la risposta. ' + (error.message || 'Riprova.'));
-  } finally {
-    busy = false;
-    resizeInput();
-    renderHistory();
-    scrollBottom();
-    if (bubble.isConnected) addMessageActions(bubble, chatId, messageIndex);
-  }
-}
-
 async function regenerateResponse(chatId, messageIndex) {
   if (busy || !authReady) return;
 
@@ -1568,14 +1331,10 @@ async function regenerateResponse(chatId, messageIndex) {
       headers.Authorization = 'Bearer ' + data.session.access_token;
     }
 
-    const requestController = new AbortController();
-    activeRequestController = requestController;
-    resizeInput();
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ messages: apiMessages, stream: true }),
-      signal: requestController.signal
+      body: JSON.stringify({ messages: apiMessages, stream: true })
     });
 
     reply = await readStreamingReply(response, partial => {
@@ -1584,23 +1343,16 @@ async function regenerateResponse(chatId, messageIndex) {
         area.scrollHeight - area.scrollTop - area.clientHeight < 140;
       renderMarkdown(thinking, partial, false);
       if (keepAtBottom) scrollBottom();
-    }, requestController.signal);
-    activeRequestController = null;
-    if (requestController.signal.aborted && !reply.trim()) {
-      throw Object.assign(new Error('Generazione interrotta.'), { name: 'AbortError' });
-    }
+    });
     $('#connectionStatus').textContent = 'AI collegata';
   } catch (error) {
-    activeRequestController = null;
     console.error('Errore rigenerazione risposta:', error);
     chat.messages.push(previousResponse);
     thinking.closest('.message')?.remove();
     await saveChat(chat);
     openChat(chatId);
-    showToast(error?.name === 'AbortError'
-      ? 'Rigenerazione interrotta. Ho mantenuto la risposta precedente.'
-      : 'Rigenerazione non riuscita: ho mantenuto la risposta precedente. ' +
-        (error.message || 'Riprova tra poco.'));
+    showToast('Rigenerazione non riuscita: ho mantenuto la risposta precedente. ' +
+      (error.message || 'Riprova tra poco.'));
     busy = false;
     resizeInput();
     renderHistory();
@@ -1661,45 +1413,21 @@ async function sendMessage(text) {
     activeId = c.id;
   }
 
-  let userMessage;
-  if (editingMessageRef) {
-    const editRef = editingMessageRef;
-    const targetChat = chats.find(item => item.id === editRef.chatId);
-    if (!targetChat || targetChat.id !== c.id || !canEditUserMessage(editRef.chatId, editRef.messageIndex)) {
-      cancelEditingMessage();
-      showToast('Questo messaggio non è più modificabile.');
-      return;
-    }
-    if (attachments.length) {
-      showToast('Rimuovi gli allegati prima di modificare il messaggio.');
-      return;
-    }
-    c.messages.splice(editRef.messageIndex + 1);
-    userMessage = c.messages[editRef.messageIndex];
-    userMessage.content = text;
-    delete userMessage.feedback;
-    editingMessageRef = null;
-    const editBar = $('#editMessageBar');
-    if (editBar) editBar.hidden = true;
-  } else {
-    userMessage = {
-      role: 'user',
-      content: text,
-      attachmentNames: attachments.map(file => file.name)
-    };
-    c.messages.push(userMessage);
-  }
+  const userMessage = {
+    role: 'user',
+    content: text,
+    attachmentNames: attachments.map(file => file.name)
+  };
 
   clearStaleRegenerateActions();
+  c.messages.push(userMessage);
   setWelcomeVisible(false);
-  const userBubble = addMessage(
+  addMessage(
     'user',
     text || (attachments.length ? 'Analizza gli allegati.' : ''),
     true,
     userMessage.attachmentNames
   );
-  const userMessageIndex = c.messages.indexOf(userMessage);
-  addMessageActions(userBubble, c.id, userMessageIndex);
 
   renderHistory();
   promptEl.value = '';
@@ -1770,14 +1498,10 @@ async function sendMessage(text) {
     const headers = { 'Content-Type': 'application/json' };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
-    const requestController = new AbortController();
-    activeRequestController = requestController;
-    resizeInput();
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ messages: apiMessages, stream: true }),
-      signal: requestController.signal
+      body: JSON.stringify({ messages: apiMessages, stream: true })
     });
 
     reply = await readStreamingReply(res, partial => {
@@ -1786,103 +1510,24 @@ async function sendMessage(text) {
         area.scrollHeight - area.scrollTop - area.clientHeight < 140;
       renderMarkdown(thinking, partial, false);
       if (keepAtBottom) scrollBottom();
-    }, requestController.signal);
-    activeRequestController = null;
-    if (requestController.signal.aborted && !reply.trim()) {
-      throw Object.assign(new Error('Generazione interrotta.'), { name: 'AbortError' });
-    }
+    });
     $('#connectionStatus').textContent = 'AI collegata';
   } catch (error) {
-    activeRequestController = null;
     console.error('Errore invio messaggio:', error);
-    reply = error?.name === 'AbortError'
-      ? ''
-      : 'Non sono riuscito a completare la richiesta.\n\n' +
-        (error.message || 'Controlla la connessione e riprova.');
+    reply =
+      'Non sono riuscito a completare la richiesta.\n\n' +
+      (error.message || 'Controlla la connessione e riprova.');
   }
 
-  if (reply.trim()) {
-    renderAssistantText(thinking, reply, true);
-    c.messages.push({ role: 'assistant', content: reply });
-    addMessageActions(thinking, c.id, c.messages.length - 1);
-  } else {
-    thinking.closest('.message')?.remove();
-  }
+  renderAssistantText(thinking, reply, true);
+  c.messages.push({ role: 'assistant', content: reply });
   await saveChat(c);
+  addMessageActions(thinking, c.id, c.messages.length - 1);
   busy = false;
   resizeInput();
   renderHistory();
   scrollBottom();
 }
-
-function closeSidebar() {
-  $('#sidebar')?.classList.remove('open');
-  const backdrop = $('#sidebarBackdrop');
-  if (backdrop) backdrop.hidden = true;
-  $('#menuBtn')?.setAttribute('aria-expanded', 'false');
-  document.body.classList.remove('sidebar-open');
-}
-
-function openSidebar() {
-  $('#sidebar')?.classList.add('open');
-  const backdrop = $('#sidebarBackdrop');
-  if (backdrop) backdrop.hidden = false;
-  $('#menuBtn')?.setAttribute('aria-expanded', 'true');
-  document.body.classList.add('sidebar-open');
-}
-
-function setDesktopSidebarCollapsed(collapsed) {
-  if (window.matchMedia('(max-width: 760px)').matches) return;
-  document.body.classList.toggle('sidebar-collapsed', collapsed);
-  const button = $('#desktopSidebarBtn');
-  button?.setAttribute('aria-expanded', String(!collapsed));
-  button?.setAttribute('aria-label', collapsed ? 'Espandi barra laterale' : 'Comprimi barra laterale');
-  if (button) button.title = collapsed ? 'Espandi barra laterale' : 'Comprimi barra laterale';
-  try { localStorage.setItem('lorenzo-ai-sidebar-collapsed', collapsed ? '1' : '0'); } catch {}
-}
-
-function syncSidebarLayout() {
-  const mobile = window.matchMedia('(max-width: 760px)').matches;
-  const desktopButton = $('#desktopSidebarBtn');
-  if (desktopButton) desktopButton.hidden = mobile;
-  if (mobile) {
-    document.body.classList.remove('sidebar-collapsed');
-    closeSidebar();
-  } else {
-    closeSidebar();
-    let collapsed = false;
-    try { collapsed = localStorage.getItem('lorenzo-ai-sidebar-collapsed') === '1'; } catch {}
-    setDesktopSidebarCollapsed(collapsed);
-  }
-}
-
-$('#desktopSidebarBtn')?.addEventListener('click', () => {
-  setDesktopSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
-});
-$('#menuBtn')?.addEventListener('click', openSidebar);
-$('#closeSidebar')?.addEventListener('click', closeSidebar);
-$('#sidebarBackdrop')?.addEventListener('click', closeSidebar);
-window.matchMedia('(max-width: 760px)').addEventListener?.('change', syncSidebarLayout);
-syncSidebarLayout();
-
-$('#stopBtn')?.addEventListener('click', () => {
-  if (!activeRequestController || activeRequestController.signal.aborted) return;
-  activeRequestController.abort();
-  const button = $('#stopBtn');
-  if (button) {
-    button.disabled = true;
-    button.setAttribute('aria-label', 'Interruzione in corso');
-    button.title = 'Interruzione in corso';
-  }
-  showToast('Interruzione della generazione…');
-});
-
-document.addEventListener('pointerdown', event => {
-  const menu = $('#profileMenu');
-  if (menu && !menu.hidden && !menu.contains(event.target) && !$('#accountBtn')?.contains(event.target)) {
-    closeProfileMenu();
-  }
-});
 
 /* Eventi del compositore. */
 $('#chatForm').addEventListener('submit', event => {
@@ -1943,7 +1588,8 @@ if (imageModeBtn) {
 }
 
 $('#newChat').onclick = newChat;
-$('#cancelEditMessage')?.addEventListener('click', cancelEditingMessage);
+$('#menuBtn').onclick = () => $('#sidebar').classList.add('open');
+$('#closeSidebar').onclick = () => $('#sidebar').classList.remove('open');
 
 document.querySelectorAll('.suggestion').forEach(button => {
   button.addEventListener('click', () => sendMessage(button.dataset.prompt));
@@ -2228,45 +1874,33 @@ $('#settingsBtn').onclick = async () => {
 
 $('#refreshUsageBtn')?.addEventListener('click', refreshImageUsage);
 
-function applyTheme(mode, persist = true) {
-  const validMode = ['dark', 'light', 'auto'].includes(mode) ? mode : 'dark';
-  const prefersLight = window.matchMedia?.('(prefers-color-scheme: light)').matches === true;
-  const effectiveLight = validMode === 'light' || (validMode === 'auto' && prefersLight);
-  document.body.dataset.theme = validMode;
-  document.body.classList.toggle('light', effectiveLight);
-  if (persist) {
-    try { localStorage.setItem('lorenzo-ai-theme', validMode); } catch {}
-  }
-
-  const labels = {
-    dark: ['Tema scuro attivo', 'Passa al tema chiaro'],
-    light: ['Tema chiaro attivo', 'Usa tema automatico'],
-    auto: ['Tema automatico attivo', 'Passa al tema scuro']
-  };
-  const [statusText, actionText] = labels[validMode];
-  const themeStatus = $('#settingsThemeStatus');
-  const themeAction = $('#settingsThemeAction');
-  if (themeStatus) themeStatus.textContent = statusText;
-  if (themeAction) themeAction.textContent = actionText;
-}
-
 function toggleTheme() {
-  let currentTheme = 'dark';
-  try { currentTheme = localStorage.getItem('lorenzo-ai-theme') || 'dark'; } catch {}
-  const nextTheme = currentTheme === 'dark' ? 'light' : currentTheme === 'light' ? 'auto' : 'dark';
-  applyTheme(nextTheme);
+  document.body.classList.toggle('light');
+  try {
+    localStorage.setItem(
+      'lorenzo-ai-theme',
+      document.body.classList.contains('light') ? 'light' : 'dark'
+    );
+  } catch {}
+  const isLight = document.body.classList.contains('light');
+  const themeStatus = $('#settingsThemeStatus');
+  const themeSettingAction = $('#settingsThemeAction');
+  if (themeStatus) themeStatus.textContent = isLight ? 'Tema chiaro attivo' : 'Tema scuro attivo';
+  if (themeSettingAction) themeSettingAction.textContent = isLight ? 'Usa tema scuro' : 'Usa tema chiaro';
 }
 
 window.toggleTheme = toggleTheme;
-window.applyLorenzoTheme = applyTheme;
 
-let savedTheme = 'dark';
-try { savedTheme = localStorage.getItem('lorenzo-ai-theme') || 'dark'; } catch {}
-applyTheme(savedTheme, false);
-const systemThemeQuery = window.matchMedia?.('(prefers-color-scheme: light)');
-systemThemeQuery?.addEventListener?.('change', () => {
-  if (document.body.dataset.theme === 'auto') applyTheme('auto', false);
-});
+try {
+  if (localStorage.getItem('lorenzo-ai-theme') === 'light') {
+    document.body.classList.add('light');
+  }
+} catch {}
+
+const themeStatus = $('#settingsThemeStatus');
+const themeSettingAction = $('#settingsThemeAction');
+if (themeStatus) themeStatus.textContent = document.body.classList.contains('light') ? 'Tema chiaro attivo' : 'Tema scuro attivo';
+if (themeSettingAction) themeSettingAction.textContent = document.body.classList.contains('light') ? 'Usa tema scuro' : 'Usa tema chiaro';
 
 setupAccountButton();
 
