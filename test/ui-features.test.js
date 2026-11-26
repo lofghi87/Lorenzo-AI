@@ -52,6 +52,6 @@ test('latest response can be continued through the streaming chat API', () => {
   assert.match(app, /function canContinueResponse\(/);
   assert.match(app, /async function continueResponse\(/);
   assert.match(app, /Continua la risposta precedente/);
-  assert.match(app, /message\\.content = original/);
-  assert.match(app, /addition\\.trim\\(\\)/);
+  assert.ok(app.includes('message.content = original'));
+  assert.ok(app.includes('addition.trim()'));
 });
