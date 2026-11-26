@@ -32,6 +32,7 @@ let chats = [];
 let activeId = null;
 let busy = false;
 let activeRequestController = null;
+let editingMessageRef = null;
 let toastTimer;
 let currentUser = null;
 let authReady = false;
@@ -39,6 +40,7 @@ let selectedAttachments = [];
 let imageMode = false;
 let historyQuery = '';
 let showingPinned = false;
+let showingArchived = false;
 let speechRecognition = null;
 let voiceIsListening = false;
 
@@ -88,6 +90,40 @@ function saveLocalChats() {
 
 function pinnedStorageKey() {
   return PINNED_STORE_KEY + ':' + (currentUser?.id || 'guest');
+}
+
+function archivedStorageKey() {
+  return 'lorenzo-ai-archived-v1:' + (currentUser?.id || 'guest');
+}
+
+function loadArchivedChatIds() {
+  try {
+    const value = JSON.parse(localStorage.getItem(archivedStorageKey()) || '[]');
+    return new Set(Array.isArray(value) ? value.filter(id => typeof id === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveArchivedChatIds(ids) {
+  try {
+    localStorage.setItem(archivedStorageKey(), JSON.stringify([...ids]));
+    return true;
+  } catch {
+    showToast('Non riesco a salvare le chat archiviate su questo dispositivo.');
+    return false;
+  }
+}
+
+function toggleChatArchive(chatId) {
+  const archived = loadArchivedChatIds();
+  const isArchived = archived.has(chatId);
+  if (isArchived) archived.delete(chatId);
+  else archived.add(chatId);
+  if (saveArchivedChatIds(archived)) {
+    renderHistory();
+    showToast(isArchived ? 'Conversazione ripristinata.' : 'Conversazione archiviata su questo dispositivo.');
+  }
 }
 
 function loadPinnedChatIds() {
@@ -174,7 +210,9 @@ function ensureHistoryContextMenu() {
     '<button type="button" role="menuitem" data-history-action="down"><span class="history-menu-icon">↓</span><span>Sposta più in basso</span></button>',
     '<div class="history-menu-divider"></div>',
     '<button type="button" role="menuitem" data-history-action="pin"><span class="history-menu-icon">☆</span><span>Preferita</span></button>',
+    '<button type="button" role="menuitem" data-history-action="archive"><span class="history-menu-icon">▣</span><span>Archivia</span></button>',
     '<button type="button" role="menuitem" data-history-action="rename"><span class="history-menu-icon">✎</span><span>Rinomina</span></button>',
+    '<button type="button" role="menuitem" data-history-action="share"><span class="history-menu-icon">↗</span><span>Condividi chat</span></button>',
     '<button type="button" role="menuitem" data-history-action="export"><span class="history-menu-icon">↓</span><span>Esporta chat</span></button>',
     '<div class="history-menu-divider"></div>',
     '<button type="button" role="menuitem" data-history-action="delete" class="danger"><span class="history-menu-icon">×</span><span>Elimina chat</span></button>'
@@ -203,7 +241,9 @@ function ensureHistoryContextMenu() {
       if (pinned.has(chatId)) pinned.delete(chatId);
       else pinned.add(chatId);
       if (savePinnedChatIds(pinned)) renderHistory();
-    } else if (action === 'rename') void renameChat(chatId);
+    } else if (action === 'archive') toggleChatArchive(chatId);
+    else if (action === 'rename') void renameChat(chatId);
+    else if (action === 'share') void shareChat(chatId);
     else if (action === 'export') exportChat(chatId);
     else if (action === 'delete') void deleteChat(chatId);
   });
@@ -218,6 +258,8 @@ function openHistoryContextMenu(chatId, x, y) {
   const pinned = loadPinnedChatIds().has(chatId);
   const pinButton = menu.querySelector('[data-history-action="pin"] span:last-child');
   if (pinButton) pinButton.textContent = pinned ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti';
+  const archiveButton = menu.querySelector('[data-history-action="archive"] span:last-child');
+  if (archiveButton) archiveButton.textContent = loadArchivedChatIds().has(chatId) ? 'Ripristina chat' : 'Archivia chat';
   menu.hidden = false;
   const width = menu.offsetWidth || 235;
   const height = menu.offsetHeight || 350;
@@ -240,10 +282,13 @@ function renderHistory() {
   history.replaceChildren();
 
   const pinned = loadPinnedChatIds();
+  const archived = loadArchivedChatIds();
   const query = historyQuery.trim();
   const order = loadHistoryOrder();
   const visibleChats = chats
-    .filter(chat => (!showingPinned || pinned.has(chat.id)) && LorenzoChatFeatures.matchesChat(chat, query))
+    .filter(chat => (!showingPinned || pinned.has(chat.id)) &&
+      (showingArchived ? archived.has(chat.id) : !archived.has(chat.id)) &&
+      LorenzoChatFeatures.matchesChat(chat, query))
     .slice()
     .sort((a, b) => {
       const aIndex = order.indexOf(a.id);
@@ -314,9 +359,11 @@ function renderHistory() {
     empty.hidden = visibleChats.length > 0;
     empty.textContent = chats.length === 0
       ? 'Le tue conversazioni appariranno qui.'
-      : showingPinned && pinned.size === 0
-        ? 'Non hai ancora conversazioni preferite.'
-        : query
+      : showingArchived && archived.size === 0
+        ? 'Non hai ancora conversazioni archiviate.'
+        : showingPinned && pinned.size === 0
+          ? 'Non hai ancora conversazioni preferite.'
+          : query
           ? 'Nessuna conversazione corrisponde alla ricerca.'
           : 'Nessuna conversazione da mostrare.';
   }
@@ -327,7 +374,14 @@ document.addEventListener('pointerdown', event => {
   if (menu && !menu.hidden && !menu.contains(event.target)) closeHistoryContextMenu();
 });
 document.addEventListener('keydown', event => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    if (window.matchMedia('(max-width: 760px)').matches) openSidebar();
+    $('#historySearch')?.focus();
+    return;
+  }
   if (event.key === 'Escape') {
+    if (editingMessageRef) cancelEditingMessage();
     closeHistoryContextMenu();
     closeProfileMenu();
     if (window.matchMedia('(max-width: 760px)').matches) closeSidebar();
@@ -363,6 +417,25 @@ async function renameChat(chatId) {
   if (!currentUser) saveLocalChats();
   renderHistory();
   showToast('Conversazione rinominata.');
+}
+
+async function shareChat(chatId) {
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat) return;
+  const title = chat.title || 'Conversazione Lorenzo AI';
+  const text = LorenzoChatFeatures.toMarkdown(chat);
+  try {
+    if (typeof navigator.share === 'function') {
+      await navigator.share({ title, text });
+      showToast('Condivisione completata.');
+      return;
+    }
+    await copyText(text);
+    showToast('Testo della conversazione copiato: puoi condividerlo dove preferisci.');
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    showToast('Non sono riuscito a condividere la conversazione.');
+  }
 }
 
 function exportChat(chatId) {
@@ -423,6 +496,9 @@ async function deleteChat(chatId) {
   const pinnedIds = loadPinnedChatIds();
   pinnedIds.delete(chatId);
   savePinnedChatIds(pinnedIds);
+  const archivedIds = loadArchivedChatIds();
+  archivedIds.delete(chatId);
+  saveArchivedChatIds(archivedIds);
   if (!currentUser) saveLocalChats();
 
   if (activeId === chatId) {
@@ -459,6 +535,7 @@ function newChat() {
   messagesEl.replaceChildren();
   setWelcomeVisible(true);
   promptEl.value = '';
+  cancelEditingMessage();
   resetImageMode();
   clearSelectedAttachments();
   renderHistory();
@@ -475,7 +552,7 @@ function openChat(chatId) {
   messagesEl.replaceChildren();
   c.messages.forEach((m, index) => {
     const bubble = addMessage(m.role, m.content, false, m.attachmentNames);
-    if (m.role === 'assistant' && String(m.content || '').trim()) {
+    if (String(m.content || '').trim()) {
       addMessageActions(bubble, c.id, index);
     }
     if (m.role === 'assistant' && typeof m.imagePath === 'string') {
@@ -596,16 +673,64 @@ function clearStaleRegenerateActions() {
   messagesEl.querySelectorAll('[data-message-action="regenerate"]').forEach(button => button.remove());
 }
 
+function canEditUserMessage(chatId, messageIndex) {
+  const chat = chats.find(item => item.id === chatId);
+  const message = chat?.messages?.[messageIndex];
+  const response = chat?.messages?.[messageIndex + 1];
+  return Boolean(chat && messageIndex === chat.messages.length - 2 &&
+    message?.role === 'user' && response?.role === 'assistant' &&
+    String(message.content || '').trim() &&
+    !(Array.isArray(message.attachmentNames) && message.attachmentNames.length) &&
+    !String(message.content || '').startsWith('Crea un’immagine:'));
+}
+
+function setEditingMessage(chatId, messageIndex) {
+  const chat = chats.find(item => item.id === chatId);
+  const message = chat?.messages?.[messageIndex];
+  if (!canEditUserMessage(chatId, messageIndex) || !message) return;
+  editingMessageRef = { chatId, messageIndex };
+  promptEl.value = message.content || '';
+  const bar = $('#editMessageBar');
+  if (bar) bar.hidden = false;
+  resizeInput();
+  promptEl.focus();
+  promptEl.setSelectionRange(promptEl.value.length, promptEl.value.length);
+  showToast('Modifica il messaggio e invialo per aggiornare la risposta.');
+}
+
+function cancelEditingMessage() {
+  editingMessageRef = null;
+  const bar = $('#editMessageBar');
+  if (bar) bar.hidden = true;
+  if (promptEl) promptEl.value = '';
+  resizeInput();
+}
+
 function addMessageActions(bubble, chatId, messageIndex) {
   const wrap = bubble?.closest('.message');
   const chat = chats.find(item => item.id === chatId);
   const message = chat?.messages?.[messageIndex];
 
-  if (!wrap || wrap.querySelector('.message-actions') ||
-      wrap.classList.contains('user') || !message) return;
+  if (!wrap || wrap.querySelector('.message-actions') || !message) return;
 
   const actions = document.createElement('div');
   actions.className = 'message-actions';
+
+  if (message.role === 'user') {
+    if (!canEditUserMessage(chatId, messageIndex)) return;
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'message-action-btn';
+    editButton.dataset.messageAction = 'edit';
+    editButton.setAttribute('aria-label', 'Modifica messaggio');
+    editButton.title = 'Modifica messaggio';
+    editButton.innerHTML = '<span aria-hidden="true">✎</span><span>Modifica</span>';
+    editButton.addEventListener('click', () => setEditingMessage(chatId, messageIndex));
+    actions.append(editButton);
+    wrap.append(actions);
+    return;
+  }
+  if (message.role !== 'assistant') return;
 
   const copyButton = document.createElement('button');
   copyButton.type = 'button';
@@ -629,6 +754,45 @@ function addMessageActions(bubble, chatId, messageIndex) {
     }
   });
   actions.append(copyButton);
+
+  const feedbackGroup = document.createElement('span');
+  feedbackGroup.className = 'message-feedback';
+  [['up', 'Utile', 'Pollice in su'], ['down', 'Non utile', 'Pollice in giù']].forEach(([value, label, aria]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'message-action-btn feedback-btn' + (message.feedback === value ? ' selected' : '');
+    button.dataset.feedback = value;
+    button.setAttribute('aria-label', aria);
+    button.title = aria;
+    button.setAttribute('aria-pressed', String(message.feedback === value));
+    button.innerHTML = value === 'up'
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v10H4V10h3Zm0 0 5-7c2 0 3 2 2 4l-1 3h5a2 2 0 0 1 2 2l-2 6a2 2 0 0 1-2 2H7"/></svg><span>Utile</span>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14V4H4v10h3Zm0 0 5 7c2 0 3-2 2-4l-1-3h5a2 2 0 0 0 2-2l-2-6a2 2 0 0 0-2-2H7"/></svg><span>Non utile</span>';
+    button.addEventListener('click', async () => {
+      message.feedback = message.feedback === value ? null : value;
+      feedbackGroup.querySelectorAll('[data-feedback]').forEach(item => {
+        const selected = item.dataset.feedback === message.feedback;
+        item.classList.toggle('selected', selected);
+        item.setAttribute('aria-pressed', String(selected));
+      });
+      await saveChat(chat);
+      showToast(message.feedback ? 'Feedback salvato.' : 'Feedback rimosso.');
+    });
+    feedbackGroup.append(button);
+  });
+  actions.append(feedbackGroup);
+
+  if (canContinueResponse(chatId, messageIndex)) {
+    const continueButton = document.createElement('button');
+    continueButton.type = 'button';
+    continueButton.className = 'message-action-btn';
+    continueButton.dataset.messageAction = 'continue';
+    continueButton.setAttribute('aria-label', 'Continua risposta');
+    continueButton.title = 'Continua risposta';
+    continueButton.innerHTML = '<span aria-hidden="true">↳</span><span>Continua</span>';
+    continueButton.addEventListener('click', () => continueResponse(chatId, messageIndex));
+    actions.append(continueButton);
+  }
 
   if (canRegenerateResponse(chatId, messageIndex)) {
     const regenerateButton = document.createElement('button');
@@ -913,6 +1077,9 @@ async function saveChat(chat) {
       : {}),
     ...(typeof m.imagePath === 'string'
       ? { imagePath: m.imagePath }
+      : {}),
+    ...(m.feedback === 'up' || m.feedback === 'down'
+      ? { feedback: m.feedback }
       : {})
   }));
 
@@ -1353,6 +1520,86 @@ async function generateImage(promptText) {
   scrollBottom();
 }
 
+function canContinueResponse(chatId, messageIndex) {
+  const chat = chats.find(item => item.id === chatId);
+  const message = chat?.messages?.[messageIndex];
+  const previous = chat?.messages?.[messageIndex - 1];
+  return Boolean(chat && messageIndex === chat.messages.length - 1 &&
+    message?.role === 'assistant' && String(message.content || '').trim() &&
+    previous?.role === 'user' &&
+    !String(message.content || '').startsWith('Immagine generata per:'));
+}
+
+async function continueResponse(chatId, messageIndex) {
+  if (busy || !authReady) return;
+  const chat = chats.find(item => item.id === chatId);
+  if (!chat || !canContinueResponse(chatId, messageIndex)) return;
+
+  const message = chat.messages[messageIndex];
+  const assistantMessages = messagesEl.querySelectorAll('.message.assistant');
+  const bubble = assistantMessages[assistantMessages.length - 1]?.querySelector('.bubble');
+  if (!bubble) return;
+
+  busy = true;
+  resizeInput();
+  const original = String(message.content || '');
+  let addition = '';
+
+  try {
+    const apiMessages = chat.messages.slice(-40).map(item => ({
+      role: item.role,
+      content: item.content || ''
+    }));
+    apiMessages.push({
+      role: 'user',
+      content: 'Continua la risposta precedente dal punto in cui si è interrotta o approfondisci la parte finale. Non ripetere quanto hai già scritto.'
+    });
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentUser) {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error || !data.session?.access_token) throw new Error('Sessione scaduta. Accedi nuovamente.');
+      headers.Authorization = 'Bearer ' + data.session.access_token;
+    }
+
+    const controller = new AbortController();
+    activeRequestController = controller;
+    resizeInput();
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ messages: apiMessages, stream: true }),
+      signal: controller.signal
+    });
+    addition = await readStreamingReply(response, partial => {
+      const area = $('#chatArea');
+      const keepAtBottom = area && area.scrollHeight - area.scrollTop - area.clientHeight < 140;
+      renderMarkdown(bubble, original + (partial ? '\n\n' + partial : ''), false);
+      if (keepAtBottom) scrollBottom();
+    }, controller.signal);
+    activeRequestController = null;
+    if (addition.trim()) {
+      message.content = original + '\n\n' + addition.trim();
+      renderMarkdown(bubble, message.content);
+      await saveChat(chat);
+    } else {
+      renderMarkdown(bubble, original);
+    }
+  } catch (error) {
+    activeRequestController = null;
+    console.error('Errore continuazione risposta:', error);
+    renderMarkdown(bubble, original);
+    showToast(error?.name === 'AbortError'
+      ? 'Continuazione interrotta.'
+      : 'Non sono riuscito a continuare la risposta. ' + (error.message || 'Riprova.'));
+  } finally {
+    busy = false;
+    resizeInput();
+    renderHistory();
+    scrollBottom();
+  }
+}
+
 async function regenerateResponse(chatId, messageIndex) {
   if (busy || !authReady) return;
 
@@ -1485,21 +1732,44 @@ async function sendMessage(text) {
     activeId = c.id;
   }
 
-  const userMessage = {
-    role: 'user',
-    content: text,
-    attachmentNames: attachments.map(file => file.name)
-  };
+  let userMessage;
+  if (editingMessageRef) {
+    const editRef = editingMessageRef;
+    const targetChat = chats.find(item => item.id === editRef.chatId);
+    if (!targetChat || targetChat.id !== c.id || !canEditUserMessage(editRef.chatId, editRef.messageIndex)) {
+      cancelEditingMessage();
+      showToast('Questo messaggio non è più modificabile.');
+      return;
+    }
+    if (attachments.length) {
+      showToast('Rimuovi gli allegati prima di modificare il messaggio.');
+      return;
+    }
+    c.messages.splice(editRef.messageIndex + 1);
+    userMessage = c.messages[editRef.messageIndex];
+    userMessage.content = text;
+    delete userMessage.feedback;
+    editingMessageRef = null;
+    const editBar = $('#editMessageBar');
+    if (editBar) editBar.hidden = true;
+  } else {
+    userMessage = {
+      role: 'user',
+      content: text,
+      attachmentNames: attachments.map(file => file.name)
+    };
+    c.messages.push(userMessage);
+  }
 
   clearStaleRegenerateActions();
-  c.messages.push(userMessage);
   setWelcomeVisible(false);
-  addMessage(
+  const userBubble = addMessage(
     'user',
     text || (attachments.length ? 'Analizza gli allegati.' : ''),
     true,
     userMessage.attachmentNames
   );
+  addMessageActions(userBubble, c.id, c.messages.indexOf(userMessage));
 
   renderHistory();
   promptEl.value = '';
@@ -1605,6 +1875,7 @@ async function sendMessage(text) {
     renderAssistantText(thinking, reply, true);
     c.messages.push({ role: 'assistant', content: reply });
     addMessageActions(thinking, c.id, c.messages.length - 1);
+    addMessageActions(userBubble, c.id, c.messages.length - 2);
   } else {
     thinking.closest('.message')?.remove();
   }
@@ -1743,6 +2014,7 @@ if (imageModeBtn) {
 }
 
 $('#newChat').onclick = newChat;
+$('#cancelEditMessage')?.addEventListener('click', cancelEditingMessage);
 
 document.querySelectorAll('.suggestion').forEach(button => {
   button.addEventListener('click', () => sendMessage(button.dataset.prompt));
@@ -1765,9 +2037,31 @@ $('#clearHistorySearch')?.addEventListener('click', () => {
 
 $('#pinnedFilterBtn')?.addEventListener('click', event => {
   showingPinned = !showingPinned;
+  if (showingPinned) showingArchived = false;
   event.currentTarget.setAttribute('aria-pressed', String(showingPinned));
   event.currentTarget.classList.toggle('active', showingPinned);
   event.currentTarget.textContent = showingPinned ? 'Tutte' : 'Preferite';
+  const archivedButton = $('#archivedFilterBtn');
+  if (archivedButton) {
+    archivedButton.setAttribute('aria-pressed', String(showingArchived));
+    archivedButton.classList.toggle('active', showingArchived);
+    archivedButton.textContent = showingArchived ? 'Attive' : 'Archiviate';
+  }
+  renderHistory();
+});
+
+$('#archivedFilterBtn')?.addEventListener('click', event => {
+  showingArchived = !showingArchived;
+  if (showingArchived) showingPinned = false;
+  event.currentTarget.setAttribute('aria-pressed', String(showingArchived));
+  event.currentTarget.classList.toggle('active', showingArchived);
+  event.currentTarget.textContent = showingArchived ? 'Attive' : 'Archiviate';
+  const pinnedButton = $('#pinnedFilterBtn');
+  if (pinnedButton) {
+    pinnedButton.setAttribute('aria-pressed', String(showingPinned));
+    pinnedButton.classList.toggle('active', showingPinned);
+    pinnedButton.textContent = showingPinned ? 'Tutte' : 'Preferite';
+  }
   renderHistory();
 });
 
@@ -2000,6 +2294,36 @@ async function deleteAccount() {
     if (button) button.disabled = false;
   }
 }
+
+function exportAllChats() {
+  const payload = {
+    format: 'lorenzo-ai-export-v1',
+    exportedAt: new Date().toISOString(),
+    conversations: chats.map(chat => ({
+      title: chat.title || 'Nuova conversazione',
+      messages: (chat.messages || []).map(message => ({
+        role: message.role,
+        content: message.content || '',
+        ...(Array.isArray(message.attachmentNames) ? { attachmentNames: message.attachmentNames } : {}),
+        ...(typeof message.imagePath === 'string' ? { imagePath: message.imagePath } : {}),
+        ...(message.feedback === 'up' || message.feedback === 'down' ? { feedback: message.feedback } : {})
+      }))
+    }))
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'lorenzo-ai-conversazioni.json';
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast('Esportazione delle conversazioni avviata.');
+}
+
+$('#exportAllChatsBtn')?.addEventListener('click', exportAllChats);
 
 $('#deleteAccountBtn')?.addEventListener('click', deleteAccount);
 $('#refreshChatUsageBtn')?.addEventListener('click', refreshChatUsage);

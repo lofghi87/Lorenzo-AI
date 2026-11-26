@@ -100,6 +100,7 @@
         <input id="historySearch" type="search" maxlength="100" placeholder="Cerca nelle chat…" autocomplete="off">
       </label>
       <button id="pinnedFilterBtn" class="pinned-filter" type="button" aria-pressed="false">Preferite</button>
+      <button id="archivedFilterBtn" class="pinned-filter archived-filter" type="button" aria-pressed="false">Archiviate</button>
     </div>
     <p id="historyEmpty" class="history-empty" aria-live="polite" hidden></p>
     <div id="history" class="history"></div>
@@ -235,6 +236,10 @@
 
     <div class="composer-wrap">
       <form id="chatForm" class="composer">
+        <div class="edit-message-bar" id="editMessageBar" hidden>
+          <span>Stai modificando un messaggio</span>
+          <button type="button" id="cancelEditMessage" aria-label="Annulla modifica">Annulla</button>
+        </div>
         <div
           id="attachmentsPreview"
           class="attachments-preview"
@@ -357,11 +362,16 @@
           <svg class="settings-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
         </button>
 
-        <button type="button" class="settings-nav-row" id="settingsThemeRow">
+        <button type="button" class="settings-nav-row" id="settingsThemeRow" aria-expanded="false" aria-controls="themeModeOptions">
           <span class="settings-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></span>
           <span class="settings-row-copy"><b>Aspetto</b><small id="settingsThemeStatus">Tema scuro attivo</small></span>
-          <span class="settings-row-action" id="settingsThemeAction">Usa tema chiaro</span>
+          <span class="settings-row-action" id="settingsThemeAction">Scegli tema</span>
         </button>
+        <div class="theme-mode-options" id="themeModeOptions" hidden aria-label="Seleziona tema">
+          <button type="button" data-theme-mode="dark">Scuro</button>
+          <button type="button" data-theme-mode="light">Chiaro</button>
+          <button type="button" data-theme-mode="auto">Automatico</button>
+        </div>
 
         <button type="button" class="settings-nav-row" id="openAccountPage">
           <span class="settings-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span>
@@ -486,6 +496,8 @@
           <span class="settings-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span>
           <div class="settings-row-copy"><b id="accountPageTitle">Account Lorenzo AI</b><small id="accountPageDescription">Controlla i dati associati al tuo account.</small></div>
         </div>
+        <button type="button" class="primary-btn" id="exportAllChatsBtn">Esporta tutte le conversazioni (JSON)</button>
+        <p class="settings-muted-paragraph">L’esportazione include le conversazioni attualmente caricate e i nomi degli allegati; i file binari non vengono incorporati.</p>
         <div class="settings-info-card"><b>Eliminazione definitiva</b><p>Rimuove l'account, le conversazioni cloud, il profilo memoria e i file associati. L'operazione non può essere annullata.</p></div>
         <button type="button" class="danger-btn" id="deleteAccountBtn">Elimina account e dati</button>
         <small class="danger-note">Questa operazione è irreversibile. Se non hai effettuato l'accesso, devi accedere prima di eliminare un account.</small>
