@@ -56,6 +56,8 @@ test('restyle adds accessible navigation, profile controls and response cancella
   assert.match(html, /id="sidebarBackdrop"/);
   assert.match(html, /id="profileMenu"/);
   assert.match(html, /id="stopBtn"/);
+  assert.match(css, /#sendBtn\[hidden\]/);
+  assert.match(app, /sendBtn\.hidden = Boolean\(activeRequestController\)/);
   assert.match(app, /new AbortController\(\)/);
   assert.match(app, /signal: requestController\.signal/);
   assert.match(app, /Interruzione della generazione/);

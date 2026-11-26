@@ -772,6 +772,7 @@ function resizeInput() {
     stopButton.hidden = !activeRequestController;
     stopButton.disabled = !activeRequestController || activeRequestController.signal.aborted;
   }
+  sendBtn.hidden = Boolean(activeRequestController);
 
   // Misura l'altezza effettiva consentita dal CSS (più bassa sui telefoni)
   // ed evita che la textarea continui a crescere oltre il limite.

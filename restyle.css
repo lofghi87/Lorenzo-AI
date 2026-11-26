@@ -279,7 +279,7 @@ body.sidebar-collapsed .sidebar .side-bottom .status-dot {
   body.sidebar-open { overscroll-behavior: none; }
   .profile-menu {
     position: fixed;
-    top: calc(max(56px, env(safe-area-inset-top)) + 8px);
+    top: calc(56px + env(safe-area-inset-top) + 8px);
     right: max(10px, env(safe-area-inset-right));
     width: min(286px, calc(100vw - 20px));
   }
@@ -291,3 +291,6 @@ body.sidebar-collapsed .sidebar .side-bottom .status-dot {
     transition: none !important;
   }
 }
+
+/* Quando si genera una risposta, mostra solo il comando di interruzione. */
+#sendBtn[hidden] { display: none !important; }
