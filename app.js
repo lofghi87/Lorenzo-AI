@@ -449,6 +449,8 @@ function clearSelectedAttachments() {
 }
 
 function newChat() {
+  closeSidebar();
+  closeProfileMenu();
   activeId = null;
   messagesEl.replaceChildren();
   setWelcomeVisible(true);
@@ -481,7 +483,8 @@ function openChat(chatId) {
   resetImageMode();
   clearSelectedAttachments();
   renderHistory();
-  $('#sidebar')?.classList.remove('open');
+  closeSidebar();
+  closeProfileMenu();
   scrollBottom();
 }
 
@@ -1384,10 +1387,14 @@ async function regenerateResponse(chatId, messageIndex) {
       headers.Authorization = 'Bearer ' + data.session.access_token;
     }
 
+    const requestController = new AbortController();
+    activeRequestController = requestController;
+    resizeInput();
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ messages: apiMessages, stream: true })
+      body: JSON.stringify({ messages: apiMessages, stream: true }),
+      signal: requestController.signal
     });
 
     reply = await readStreamingReply(response, partial => {
@@ -1396,16 +1403,23 @@ async function regenerateResponse(chatId, messageIndex) {
         area.scrollHeight - area.scrollTop - area.clientHeight < 140;
       renderMarkdown(thinking, partial, false);
       if (keepAtBottom) scrollBottom();
-    });
+    }, requestController.signal);
+    activeRequestController = null;
+    if (requestController.signal.aborted && !reply.trim()) {
+      throw Object.assign(new Error('Generazione interrotta.'), { name: 'AbortError' });
+    }
     $('#connectionStatus').textContent = 'AI collegata';
   } catch (error) {
+    activeRequestController = null;
     console.error('Errore rigenerazione risposta:', error);
     chat.messages.push(previousResponse);
     thinking.closest('.message')?.remove();
     await saveChat(chat);
     openChat(chatId);
-    showToast('Rigenerazione non riuscita: ho mantenuto la risposta precedente. ' +
-      (error.message || 'Riprova tra poco.'));
+    showToast(error?.name === 'AbortError'
+      ? 'Rigenerazione interrotta. Ho mantenuto la risposta precedente.'
+      : 'Rigenerazione non riuscita: ho mantenuto la risposta precedente. ' +
+        (error.message || 'Riprova tra poco.'));
     busy = false;
     resizeInput();
     renderHistory();
@@ -1551,10 +1565,14 @@ async function sendMessage(text) {
     const headers = { 'Content-Type': 'application/json' };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
+    const requestController = new AbortController();
+    activeRequestController = requestController;
+    resizeInput();
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ messages: apiMessages, stream: true })
+      body: JSON.stringify({ messages: apiMessages, stream: true }),
+      signal: requestController.signal
     });
 
     reply = await readStreamingReply(res, partial => {
@@ -1563,19 +1581,29 @@ async function sendMessage(text) {
         area.scrollHeight - area.scrollTop - area.clientHeight < 140;
       renderMarkdown(thinking, partial, false);
       if (keepAtBottom) scrollBottom();
-    });
+    }, requestController.signal);
+    activeRequestController = null;
+    if (requestController.signal.aborted && !reply.trim()) {
+      throw Object.assign(new Error('Generazione interrotta.'), { name: 'AbortError' });
+    }
     $('#connectionStatus').textContent = 'AI collegata';
   } catch (error) {
+    activeRequestController = null;
     console.error('Errore invio messaggio:', error);
-    reply =
-      'Non sono riuscito a completare la richiesta.\n\n' +
-      (error.message || 'Controlla la connessione e riprova.');
+    reply = error?.name === 'AbortError'
+      ? ''
+      : 'Non sono riuscito a completare la richiesta.\n\n' +
+        (error.message || 'Controlla la connessione e riprova.');
   }
 
-  renderAssistantText(thinking, reply, true);
-  c.messages.push({ role: 'assistant', content: reply });
+  if (reply.trim()) {
+    renderAssistantText(thinking, reply, true);
+    c.messages.push({ role: 'assistant', content: reply });
+    addMessageActions(thinking, c.id, c.messages.length - 1);
+  } else {
+    thinking.closest('.message')?.remove();
+  }
   await saveChat(c);
-  addMessageActions(thinking, c.id, c.messages.length - 1);
   busy = false;
   resizeInput();
   renderHistory();
