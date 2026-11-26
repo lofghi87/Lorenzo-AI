@@ -1801,6 +1801,7 @@ async function sendMessage(text) {
     renderAssistantText(thinking, reply, true);
     c.messages.push({ role: 'assistant', content: reply });
     addMessageActions(thinking, c.id, c.messages.length - 1);
+    addMessageActions(userBubble, c.id, c.messages.length - 2);
   } else {
     thinking.closest('.message')?.remove();
   }
