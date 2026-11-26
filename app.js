@@ -40,6 +40,7 @@ let selectedAttachments = [];
 let imageMode = false;
 let historyQuery = '';
 let showingPinned = false;
+let showingArchived = false;
 let speechRecognition = null;
 let voiceIsListening = false;
 
@@ -89,6 +90,40 @@ function saveLocalChats() {
 
 function pinnedStorageKey() {
   return PINNED_STORE_KEY + ':' + (currentUser?.id || 'guest');
+}
+
+function archivedStorageKey() {
+  return 'lorenzo-ai-archived-v1:' + (currentUser?.id || 'guest');
+}
+
+function loadArchivedChatIds() {
+  try {
+    const value = JSON.parse(localStorage.getItem(archivedStorageKey()) || '[]');
+    return new Set(Array.isArray(value) ? value.filter(id => typeof id === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveArchivedChatIds(ids) {
+  try {
+    localStorage.setItem(archivedStorageKey(), JSON.stringify([...ids]));
+    return true;
+  } catch {
+    showToast('Non riesco a salvare le chat archiviate su questo dispositivo.');
+    return false;
+  }
+}
+
+function toggleChatArchive(chatId) {
+  const archived = loadArchivedChatIds();
+  const isArchived = archived.has(chatId);
+  if (isArchived) archived.delete(chatId);
+  else archived.add(chatId);
+  if (saveArchivedChatIds(archived)) {
+    renderHistory();
+    showToast(isArchived ? 'Conversazione ripristinata.' : 'Conversazione archiviata su questo dispositivo.');
+  }
 }
 
 function loadPinnedChatIds() {
@@ -175,6 +210,7 @@ function ensureHistoryContextMenu() {
     '<button type="button" role="menuitem" data-history-action="down"><span class="history-menu-icon">↓</span><span>Sposta più in basso</span></button>',
     '<div class="history-menu-divider"></div>',
     '<button type="button" role="menuitem" data-history-action="pin"><span class="history-menu-icon">☆</span><span>Preferita</span></button>',
+    '<button type="button" role="menuitem" data-history-action="archive"><span class="history-menu-icon">▣</span><span>Archivia</span></button>',
     '<button type="button" role="menuitem" data-history-action="rename"><span class="history-menu-icon">✎</span><span>Rinomina</span></button>',
     '<button type="button" role="menuitem" data-history-action="export"><span class="history-menu-icon">↓</span><span>Esporta chat</span></button>',
     '<div class="history-menu-divider"></div>',
@@ -204,7 +240,8 @@ function ensureHistoryContextMenu() {
       if (pinned.has(chatId)) pinned.delete(chatId);
       else pinned.add(chatId);
       if (savePinnedChatIds(pinned)) renderHistory();
-    } else if (action === 'rename') void renameChat(chatId);
+    } else if (action === 'archive') toggleChatArchive(chatId);
+    else if (action === 'rename') void renameChat(chatId);
     else if (action === 'export') exportChat(chatId);
     else if (action === 'delete') void deleteChat(chatId);
   });
@@ -219,6 +256,8 @@ function openHistoryContextMenu(chatId, x, y) {
   const pinned = loadPinnedChatIds().has(chatId);
   const pinButton = menu.querySelector('[data-history-action="pin"] span:last-child');
   if (pinButton) pinButton.textContent = pinned ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti';
+  const archiveButton = menu.querySelector('[data-history-action="archive"] span:last-child');
+  if (archiveButton) archiveButton.textContent = loadArchivedChatIds().has(chatId) ? 'Ripristina chat' : 'Archivia chat';
   menu.hidden = false;
   const width = menu.offsetWidth || 235;
   const height = menu.offsetHeight || 350;
@@ -241,10 +280,13 @@ function renderHistory() {
   history.replaceChildren();
 
   const pinned = loadPinnedChatIds();
+  const archived = loadArchivedChatIds();
   const query = historyQuery.trim();
   const order = loadHistoryOrder();
   const visibleChats = chats
-    .filter(chat => (!showingPinned || pinned.has(chat.id)) && LorenzoChatFeatures.matchesChat(chat, query))
+    .filter(chat => (!showingPinned || pinned.has(chat.id)) &&
+      (showingArchived ? archived.has(chat.id) : !archived.has(chat.id)) &&
+      LorenzoChatFeatures.matchesChat(chat, query))
     .slice()
     .sort((a, b) => {
       const aIndex = order.indexOf(a.id);
@@ -315,9 +357,11 @@ function renderHistory() {
     empty.hidden = visibleChats.length > 0;
     empty.textContent = chats.length === 0
       ? 'Le tue conversazioni appariranno qui.'
-      : showingPinned && pinned.size === 0
-        ? 'Non hai ancora conversazioni preferite.'
-        : query
+      : showingArchived && archived.size === 0
+        ? 'Non hai ancora conversazioni archiviate.'
+        : showingPinned && pinned.size === 0
+          ? 'Non hai ancora conversazioni preferite.'
+          : query
           ? 'Nessuna conversazione corrisponde alla ricerca.'
           : 'Nessuna conversazione da mostrare.';
   }
@@ -425,6 +469,9 @@ async function deleteChat(chatId) {
   const pinnedIds = loadPinnedChatIds();
   pinnedIds.delete(chatId);
   savePinnedChatIds(pinnedIds);
+  const archivedIds = loadArchivedChatIds();
+  archivedIds.delete(chatId);
+  saveArchivedChatIds(archivedIds);
   if (!currentUser) saveLocalChats();
 
   if (activeId === chatId) {
@@ -1963,9 +2010,31 @@ $('#clearHistorySearch')?.addEventListener('click', () => {
 
 $('#pinnedFilterBtn')?.addEventListener('click', event => {
   showingPinned = !showingPinned;
+  if (showingPinned) showingArchived = false;
   event.currentTarget.setAttribute('aria-pressed', String(showingPinned));
   event.currentTarget.classList.toggle('active', showingPinned);
   event.currentTarget.textContent = showingPinned ? 'Tutte' : 'Preferite';
+  const archivedButton = $('#archivedFilterBtn');
+  if (archivedButton) {
+    archivedButton.setAttribute('aria-pressed', String(showingArchived));
+    archivedButton.classList.toggle('active', showingArchived);
+    archivedButton.textContent = showingArchived ? 'Attive' : 'Archiviate';
+  }
+  renderHistory();
+});
+
+$('#archivedFilterBtn')?.addEventListener('click', event => {
+  showingArchived = !showingArchived;
+  if (showingArchived) showingPinned = false;
+  event.currentTarget.setAttribute('aria-pressed', String(showingArchived));
+  event.currentTarget.classList.toggle('active', showingArchived);
+  event.currentTarget.textContent = showingArchived ? 'Attive' : 'Archiviate';
+  const pinnedButton = $('#pinnedFilterBtn');
+  if (pinnedButton) {
+    pinnedButton.setAttribute('aria-pressed', String(showingPinned));
+    pinnedButton.classList.toggle('active', showingPinned);
+    pinnedButton.textContent = showingPinned ? 'Tutte' : 'Preferite';
+  }
   renderHistory();
 });
 
@@ -2198,6 +2267,36 @@ async function deleteAccount() {
     if (button) button.disabled = false;
   }
 }
+
+function exportAllChats() {
+  const payload = {
+    format: 'lorenzo-ai-export-v1',
+    exportedAt: new Date().toISOString(),
+    conversations: chats.map(chat => ({
+      title: chat.title || 'Nuova conversazione',
+      messages: (chat.messages || []).map(message => ({
+        role: message.role,
+        content: message.content || '',
+        ...(Array.isArray(message.attachmentNames) ? { attachmentNames: message.attachmentNames } : {}),
+        ...(typeof message.imagePath === 'string' ? { imagePath: message.imagePath } : {}),
+        ...(message.feedback === 'up' || message.feedback === 'down' ? { feedback: message.feedback } : {})
+      }))
+    }))
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'lorenzo-ai-conversazioni.json';
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast('Esportazione delle conversazioni avviata.');
+}
+
+$('#exportAllChatsBtn')?.addEventListener('click', exportAllChats);
 
 $('#deleteAccountBtn')?.addEventListener('click', deleteAccount);
 $('#refreshChatUsageBtn')?.addEventListener('click', refreshChatUsage);

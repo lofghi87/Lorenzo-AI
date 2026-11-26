@@ -100,6 +100,7 @@
         <input id="historySearch" type="search" maxlength="100" placeholder="Cerca nelle chat…" autocomplete="off">
       </label>
       <button id="pinnedFilterBtn" class="pinned-filter" type="button" aria-pressed="false">Preferite</button>
+      <button id="archivedFilterBtn" class="pinned-filter archived-filter" type="button" aria-pressed="false">Archiviate</button>
     </div>
     <p id="historyEmpty" class="history-empty" aria-live="polite" hidden></p>
     <div id="history" class="history"></div>
@@ -490,6 +491,8 @@
           <span class="settings-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span>
           <div class="settings-row-copy"><b id="accountPageTitle">Account Lorenzo AI</b><small id="accountPageDescription">Controlla i dati associati al tuo account.</small></div>
         </div>
+        <button type="button" class="primary-btn" id="exportAllChatsBtn">Esporta tutte le conversazioni (JSON)</button>
+        <p class="settings-muted-paragraph">L’esportazione include le conversazioni attualmente caricate e i nomi degli allegati; i file binari non vengono incorporati.</p>
         <div class="settings-info-card"><b>Eliminazione definitiva</b><p>Rimuove l'account, le conversazioni cloud, il profilo memoria e i file associati. L'operazione non può essere annullata.</p></div>
         <button type="button" class="danger-btn" id="deleteAccountBtn">Elimina account e dati</button>
         <small class="danger-note">Questa operazione è irreversibile. Se non hai effettuato l'accesso, devi accedere prima di eliminare un account.</small>
