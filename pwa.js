@@ -91,8 +91,11 @@
       const height = iosKeyboardLayout
         ? layoutHeight
         : (visibleHeight > 0 ? visibleHeight : layoutHeight);
+      // Il viewport visibile può essere anche traslato da Safari mentre
+      // apre la tastiera. Calcola lo spazio sotto il bordo visibile, non solo
+      // la differenza di altezza, altrimenti il composer può finire dietro la tastiera.
       const keyboardInset = iosKeyboardLayout && keyboardViewportReduced
-        ? Math.max(0, layoutHeight - visibleHeight)
+        ? Math.max(0, layoutHeight - (visualOffsetTop + visibleHeight))
         : 0;
 
       root.style.setProperty('--app-viewport-height', Math.round(height) + 'px');
